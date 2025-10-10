@@ -1,0 +1,690 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { toast } from '@/hooks/use-toast';
+import { 
+  Upload, 
+  X, 
+  Plus, 
+  ArrowLeft,
+  Image as ImageIcon,
+  FileText,
+  Check
+} from 'lucide-react';
+
+const UploadPromptSimple = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [isLoading, setIsLoading] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    title: '',
+    prompt_text: '',
+    description: '',
+    category_id: '',
+    media_type: 'image' as const,
+    difficulty_level: 'beginner' as const,
+    style_tags: [] as string[],
+    industry_tags: [] as string[],
+    image_url: '',
+    model: '',
+  });
+
+  const [newStyleTag, setNewStyleTag] = useState('');
+  const [newIndustryTag, setNewIndustryTag] = useState('');
+
+  // Fetch categories
+  const { data: categories } = useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Create prompt mutation
+  const createPromptMutation = useMutation({
+    mutationFn: async (promptData: typeof formData) => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      console.log('Creating prompt with data:', promptData);
+      console.log('User ID:', user.id);
+
+      const insertData: any = {
+        title: promptData.title,
+        prompt_text: promptData.prompt_text,
+        media_type: promptData.media_type,
+        difficulty_level: promptData.difficulty_level,
+        style_tags: promptData.style_tags,
+        industry_tags: promptData.industry_tags,
+        primary_image_url: promptData.image_url || null,
+        created_by: user.id,
+      };
+
+      if (promptData.model) {
+        insertData.model = promptData.model;
+      }
+
+      // Only add category_id if it's a valid UUID (not 'no-category')
+      if (formData.category_id && formData.category_id !== 'no-category') {
+        insertData.category_id = formData.category_id;
+      }
+
+      console.log('Insert data:', insertData);
+
+      const { error } = await supabase
+        .from('prompts')
+        .insert(insertData);
+
+      if (error) {
+        console.error('Supabase error:', error);
+        console.error('Error details:', error.message);
+        console.error('Error code:', error.code);
+        console.error('Error details:', error.details);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prompts'] });
+      toast({
+        title: 'Prompt uploaded!',
+        description: 'Your prompt with image has been successfully added to the library.',
+      });
+      // Reset form after successful upload
+      setFormData({
+        title: '',
+        prompt_text: '',
+        description: '',
+        category_id: '',
+        media_type: 'image',
+        difficulty_level: 'beginner',
+        style_tags: [],
+        industry_tags: [],
+        image_url: '',
+        model: '',
+      });
+      setUploadedImage(null);
+      setNewStyleTag('');
+      setNewIndustryTag('');
+    },
+    onError: (error: any) => {
+      console.error('Mutation error:', error);
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
+      console.error('Error details:', error.details);
+      toast({
+        title: 'Upload failed',
+        description: error.message || 'An error occurred while uploading the prompt',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      console.log('Submitting form with data:', formData);
+      
+      // Validate required fields
+      if (!formData.title.trim()) {
+        toast({
+          title: 'Validation Error',
+          description: 'Title is required',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (!formData.prompt_text.trim()) {
+        toast({
+          title: 'Validation Error',
+          description: 'Prompt text is required',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (!formData.image_url) {
+        toast({
+          title: 'Validation Error',
+          description: 'Image is required',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      await createPromptMutation.mutateAsync(formData);
+    } catch (error) {
+      console.error('Submit error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please upload an image file.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: 'File too large',
+        description: 'Please upload an image smaller than 10MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Generate unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `uploads/${fileName}`;
+
+      // Upload file to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('prompt-images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('prompt-images')
+        .getPublicUrl(filePath);
+
+      setUploadedImage(urlData.publicUrl);
+      handleInputChange('image_url', urlData.publicUrl);
+
+      toast({
+        title: 'Upload successful!',
+        description: 'Image has been uploaded successfully.',
+      });
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      toast({
+        title: 'Upload failed',
+        description: error.message || 'Failed to upload image. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const addStyleTag = () => {
+    if (newStyleTag.trim() && !formData.style_tags.includes(newStyleTag.trim())) {
+      setFormData(prev => ({
+        ...prev,
+        style_tags: [...prev.style_tags, newStyleTag.trim()]
+      }));
+      setNewStyleTag('');
+    }
+  };
+
+  const removeStyleTag = (tag: string) => {
+    setFormData(prev => ({
+      ...prev,
+      style_tags: prev.style_tags.filter(t => t !== tag)
+    }));
+  };
+
+  const addIndustryTag = () => {
+    if (newIndustryTag.trim() && !formData.industry_tags.includes(newIndustryTag.trim())) {
+      setFormData(prev => ({
+        ...prev,
+        industry_tags: [...prev.industry_tags, newIndustryTag.trim()]
+      }));
+      setNewIndustryTag('');
+    }
+  };
+
+  const removeIndustryTag = (tag: string) => {
+    setFormData(prev => ({
+      ...prev,
+      industry_tags: prev.industry_tags.filter(t => t !== tag)
+    }));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="outline" size="sm" onClick={() => navigate('/admin/dashboard')}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Dashboard
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Upload Prompt</h1>
+          <p className="text-muted-foreground">
+            Upload an image with its prompt for the explore page
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Main Upload Area */}
+          <div className="space-y-6">
+            {/* Image Upload Section */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ImageIcon className="h-5 w-5" />
+                  Upload Image
+                </CardTitle>
+                <CardDescription>
+                  Upload the main image that will appear in the explore page cards
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="image-upload">Image File</Label>
+                  <Input
+                    id="image-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="cursor-pointer"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    PNG, JPG, GIF up to 10MB
+                  </p>
+                </div>
+
+                {/* Image Preview */}
+                {uploadedImage && (
+                  <div className="space-y-2">
+                    <Label>Preview</Label>
+                    <div className="relative h-48 rounded-lg overflow-hidden bg-muted">
+                      <img
+                        src={uploadedImage}
+                        alt="Uploaded preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute top-2 right-2">
+                        <Badge variant="secondary" className="bg-purple-500 text-white">
+                          <Check className="h-3 w-3 mr-1" />
+                          Uploaded
+                        </Badge>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      This is how your image will appear in the explore page cards
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Prompt Information */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Prompt Information
+                </CardTitle>
+                <CardDescription>
+                  Provide the prompt details that go with this image
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Title + Model in one row */}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="title">Title *</Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => handleInputChange('title', e.target.value)}
+                      placeholder="Enter a descriptive title"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="model">Model</Label>
+                    <Input
+                      id="model"
+                      value={formData.model}
+                      onChange={(e) => handleInputChange('model', e.target.value)}
+                      placeholder="e.g., Midjourney v6, GPT-4o, Flux"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="prompt_text">Prompt Text *</Label>
+                  <Textarea
+                    id="prompt_text"
+                    value={formData.prompt_text}
+                    onChange={(e) => handleInputChange('prompt_text', e.target.value)}
+                    placeholder="Enter the full prompt text..."
+                    rows={6}
+                    required
+                  />
+                </div>
+
+                {/* Category + Media + Difficulty */}
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2 md:col-span-1">
+                    <Label htmlFor="category">Category</Label>
+                    <Select value={formData.category_id} onValueChange={(value) => handleInputChange('category_id', value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="no-category">No Category</SelectItem>
+                        {categories?.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 md:col-span-1">
+                    <Label htmlFor="media_type">Type</Label>
+                    <Select value={formData.media_type} onValueChange={(value) => handleInputChange('media_type', value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="image">Image</SelectItem>
+                        <SelectItem value="video">Video</SelectItem>
+                        <SelectItem value="audio">Audio</SelectItem>
+                        <SelectItem value="text">Text</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 md:col-span-1">
+                    <Label htmlFor="difficulty_level">Difficulty</Label>
+                    <Select value={formData.difficulty_level} onValueChange={(value) => handleInputChange('difficulty_level', value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="beginner">Beginner</SelectItem>
+                        <SelectItem value="intermediate">Intermediate</SelectItem>
+                        <SelectItem value="advanced">Advanced</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    placeholder="Optional description explaining the prompt or its use case..."
+                    rows={3}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Model Tag */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle>Model</CardTitle>
+                <CardDescription>
+                  Specify the generative model used for this prompt
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="model">Model</Label>
+                  <Input
+                    id="model"
+                    value={formData.model}
+                    onChange={(e) => handleInputChange('model', e.target.value)}
+                    placeholder="e.g., Midjourney v6, GPT-4o, Flux, Nano Banana"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {['Midjourney', 'Midjourney v6', 'GPT-4o', 'GPT-4.1', 'Stable Diffusion', 'Flux', 'Nano Banana'].map((m) => (
+                    <Badge
+                      key={m}
+                      variant="outline"
+                      className="cursor-pointer hover:bg-white/10"
+                      onClick={() => handleInputChange('model', m)}
+                    >
+                      {m}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tags */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle>Tags</CardTitle>
+                <CardDescription>
+                  Add tags to help users discover your prompt
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Style Tags */}
+                <div className="space-y-3">
+                  <Label>Style Tags</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newStyleTag}
+                      onChange={(e) => setNewStyleTag(e.target.value)}
+                      placeholder="Add style tag..."
+                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addStyleTag())}
+                    />
+                    <Button type="button" onClick={addStyleTag} size="sm">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.style_tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="flex items-center gap-1">
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => removeStyleTag(tag)}
+                          className="ml-1 hover:text-destructive"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Industry Tags */}
+                <div className="space-y-3">
+                  <Label>Industry Tags</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newIndustryTag}
+                      onChange={(e) => setNewIndustryTag(e.target.value)}
+                      placeholder="Add industry tag..."
+                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addIndustryTag())}
+                    />
+                    <Button type="button" onClick={addIndustryTag} size="sm">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.industry_tags.map((tag) => (
+                      <Badge key={tag} variant="outline" className="flex items-center gap-1">
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => removeIndustryTag(tag)}
+                          className="ml-1 hover:text-destructive"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Larger live preview (non-sticky) */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ImageIcon className="h-5 w-5" />
+                  Live Preview
+                </CardTitle>
+                <CardDescription>How it will appear to users</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {formData.image_url ? (
+                  <div className="relative h-80 rounded-lg overflow-hidden bg-muted">
+                    <img
+                      src={formData.image_url}
+                      alt={formData.title || 'Preview'}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent">
+                      <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary" className="text-xs bg-white/90">
+                            {formData.category_id === 'no-category' ? 'Uncategorized' : 
+                             categories?.find(c => c.id === formData.category_id)?.name || 'Uncategorized'}
+                          </Badge>
+                          {formData.model && (
+                            <Badge className="text-xs bg-emerald-500/20 text-emerald-300 border-emerald-500/30">{formData.model}</Badge>
+                          )}
+                        </div>
+                        <Badge 
+                          variant={formData.difficulty_level === 'beginner' ? 'default' : 
+                                 formData.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
+                          className="text-xs bg-white/90"
+                        >
+                          {formData.difficulty_level}
+                        </Badge>
+                      </div>
+                      <div className="absolute bottom-3 left-3 right-3">
+                        <h4 className="text-white font-semibold text-sm line-clamp-1">
+                          {formData.title || 'Untitled Prompt'}
+                        </h4>
+                        <p className="text-white/80 text-xs line-clamp-2">
+                          {formData.prompt_text || 'No prompt text yet...'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-80 rounded-lg bg-muted flex items-center justify-center">
+                    <div className="text-center text-muted-foreground">
+                      <ImageIcon className="h-8 w-8 mx-auto mb-2" />
+                      <p className="text-sm">Upload an image to see live preview</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Prompt snippet and tags */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Prompt snippet</Label>
+                  <div className="bg-muted/50 rounded-md p-3 max-h-28 overflow-auto">
+                    <p className="text-xs whitespace-pre-wrap">
+                      {formData.prompt_text || 'Your prompt text will appear here...'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Tags</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.style_tags.map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {formData.industry_tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {!formData.style_tags.length && !formData.industry_tags.length && (
+                      <span className="text-xs text-muted-foreground">No tags yet</span>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Actions */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle>Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button type="submit" className="w-full" disabled={isLoading || !formData.image_url}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  {isLoading ? 'Uploading...' : 'Upload Prompt'}
+                </Button>
+                <Button type="button" variant="outline" className="w-full" onClick={() => navigate('/admin/dashboard')}>
+                  Cancel
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Tips */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle>Upload Tips</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-2">
+                <p>• Upload high-quality images for best results</p>
+                <p>• Use descriptive titles for better discoverability</p>
+                <p>• Add relevant tags to help users find your prompt</p>
+                <p>• Images will appear in the explore page scattered grid</p>
+                <p>• Choose appropriate difficulty level</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+export default UploadPromptSimple;

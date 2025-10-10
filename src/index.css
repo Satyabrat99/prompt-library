@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Prompt Studio Dark Theme */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 270 95% 60%;
+    --primary-foreground: 355.7 100% 97.3%;
+
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 270 95% 60%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 270 95% 60%;
+    --sidebar-primary-foreground: 355.7 100% 97.3%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 270 95% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background: #000000;
+    min-height: 100vh;
+    position: relative;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    opacity: 0.10;
+    pointer-events: none;
+    z-index: -1;
+    background: 
+      linear-gradient(135deg, transparent 0%, rgba(147, 51, 234, 0.08) 50%, transparent 100%),
+      radial-gradient(circle at 25% 25%, rgba(147, 51, 234, 0.10) 0%, transparent 50%),
+      radial-gradient(circle at 75% 75%, rgba(147, 51, 234, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 50% 50%, rgba(147, 51, 234, 0.06) 0%, transparent 70%),
+      radial-gradient(circle at 10% 90%, rgba(147, 51, 234, 0.05) 0%, transparent 60%),
+      radial-gradient(circle at 90% 10%, rgba(147, 51, 234, 0.07) 0%, transparent 60%);
+  }
+}
+
+@layer components {
+  /* Prompt Studio Glass Effect */
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/20 shadow-lg shadow-black/10;
+  }
+  
+  /* Prompt Studio Glow Effect */
+  .glow {
+    box-shadow: 0 0 20px hsl(270 95% 60% / 0.3);
+  }
+  
+  /* Prompt Studio Gradient Text */
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(270 95% 60%) 0%, hsl(280 100% 70%) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  /* Prompt Studio Card Hover */
+  .ai-card {
+    @apply transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/10 hover:-translate-y-1;
+  }
+  
+  /* Prompt Studio Button */
+  .ai-button {
+    @apply bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300;
+  }
+}
