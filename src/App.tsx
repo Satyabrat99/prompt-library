@@ -14,10 +14,10 @@ import PromptDetail from "./pages/PromptDetail";
 import Settings from "./pages/Settings";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import UploadPromptSimple from "./pages/admin/UploadPromptSimple";
-import CreatePrompt from "./pages/admin/CreatePrompt";
 import CategoryManagement from "./pages/admin/CategoryManagement";
 import Analytics from "./pages/admin/Analytics";
 import TestImageUpload from "./pages/admin/TestImageUpload";
+import Content from "./pages/admin/Content";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ProtectedAdminRoute from "./components/ProtectedAdminRoute";
 import Layout from "./components/Layout";
@@ -115,11 +115,11 @@ const App = () => (
               } 
             />
             <Route 
-              path="/admin/prompts/new" 
+              path="/admin/content" 
               element={
                 <ProtectedAdminRoute>
                   <Layout>
-                    <CreatePrompt />
+                    <Content />
                   </Layout>
                 </ProtectedAdminRoute>
               } 

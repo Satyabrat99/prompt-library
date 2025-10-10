@@ -259,12 +259,12 @@ const Analytics = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-green-600" />
+                  <TrendingUp className="h-5 w-5 text-purple-600" />
                   Engagement Rate
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-green-600">78%</div>
+                <div className="text-3xl font-bold text-purple-600">78%</div>
                 <p className="text-sm text-muted-foreground">Copy-to-view ratio</p>
                 <Progress value={78} className="mt-2" />
                 <p className="text-xs text-muted-foreground mt-1">
@@ -401,7 +401,7 @@ const Analytics = () => {
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
                         {activity.interaction_type === 'view' && <Eye className="h-4 w-4 text-blue-600" />}
-                        {activity.interaction_type === 'copy' && <Copy className="h-4 w-4 text-green-600" />}
+                        {activity.interaction_type === 'copy' && <Copy className="h-4 w-4 text-purple-600" />}
                         {activity.interaction_type === 'favorite' && <Heart className="h-4 w-4 text-red-600" />}
                       </div>
                       <div>
@@ -450,7 +450,7 @@ const Analytics = () => {
                         {day.views}
                       </div>
                       <div className="flex items-center gap-1">
-                        <Copy className="h-3 w-3 text-green-600" />
+                        <Copy className="h-3 w-3 text-purple-600" />
                         {day.copies}
                       </div>
                       <div className="flex items-center gap-1">

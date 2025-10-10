@@ -105,3 +105,6 @@ Desktop.ini
 
 # Test files
 TEST_IMAGE_URL.html
+
+# YoYo AI version control directory
+.yoyo/

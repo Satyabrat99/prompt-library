@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../integrations/supabase/client';
 import { Card } from '../components/ui/card';
@@ -7,31 +7,52 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { Search, Copy, Eye, Heart, X, Download, Share2 } from 'lucide-react';
+import { Search, Copy, Eye, Heart, X, Download, Share2, Lock } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
+import { useCredits } from '../hooks/useCredits';
 import { useAuth } from '../hooks/useAuth';
 import type { Tables } from '../integrations/supabase/types';
 
 type Prompt = Tables<'prompts'> & {
   categories?: Tables<'categories'>;
   is_favorited?: boolean;
+  is_unlocked?: boolean;
 };
 
 const Explore = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { spendPromptCredit, isSpendingCredit } = useCredits();
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedMediaType, setSelectedMediaType] = useState<string>('all');
-  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
+  const [selectedModel, setSelectedModel] = useState<string>('all');
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [page, setPage] = useState(0);
+  const [allPrompts, setAllPrompts] = useState<Prompt[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // Fetch prompts with categories and favorite status
+  // Debounce search term to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Fetch prompts with pagination
   const { data: prompts, isLoading, error } = useQuery({
-    queryKey: ['prompts', selectedCategory, selectedMediaType, selectedDifficulty, searchTerm, user?.id],
+    queryKey: ['prompts', selectedCategory, selectedMediaType, selectedModel, debouncedSearchTerm, user?.id, page],
     queryFn: async () => {
+      const ITEMS_PER_PAGE = 20;
+      const from = page * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
       let query = supabase
         .from('prompts')
         .select(`
@@ -42,7 +63,8 @@ const Explore = () => {
             slug
           )
         `)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
       // Apply filters
       if (selectedCategory !== 'all') {
@@ -53,40 +75,121 @@ const Explore = () => {
         query = query.eq('media_type', selectedMediaType as any);
       }
       
-      if (selectedDifficulty !== 'all') {
-        query = query.eq('difficulty_level', selectedDifficulty as any);
+      if (selectedModel !== 'all') {
+        query = query.eq('model', selectedModel as any);
       }
 
       // Apply search
-      if (searchTerm) {
-        query = query.or(`title.ilike.%${searchTerm}%,prompt_text.ilike.%${searchTerm}%`);
+      if (debouncedSearchTerm) {
+        // Match title, prompt text, model, and tag membership (supports spaces via quoted element)
+        const term = debouncedSearchTerm;
+        const quoted = JSON.stringify(term); // e.g. "photo realistic" => "\"photo realistic\""
+        query = query.or(
+          `title.ilike.%${term}%,prompt_text.ilike.%${term}%,model.ilike.%${term}%,style_tags.cs.{${quoted}},industry_tags.cs.{${quoted}}`
+        );
       }
 
       const { data, error } = await query;
       if (error) throw error;
       
-      // Get favorite status for each prompt if user is logged in
+      // Get favorite status and unlocked status for each prompt if user is logged in
       if (user?.id && data) {
         const promptIds = data.map(p => p.id);
-        const { data: favorites } = await supabase
-          .from('user_interactions')
-          .select('prompt_id')
-          .eq('user_id', user.id)
-          .eq('interaction_type', 'favorite')
-          .in('prompt_id', promptIds);
-        
-        const favoriteIds = new Set(favorites?.map(f => f.prompt_id) || []);
-        
+
+        const [favoritesRes, unlockedRes] = await Promise.all([
+          supabase
+            .from('user_interactions')
+            .select('prompt_id')
+            .eq('user_id', user.id)
+            .eq('interaction_type', 'favorite')
+            .in('prompt_id', promptIds),
+          supabase
+            .from('user_unlocked_prompts')
+            .select('prompt_id')
+            .eq('user_id', user.id)
+            .in('prompt_id', promptIds),
+        ]);
+
+        const favoriteIds = new Set((favoritesRes.data || []).map(f => f.prompt_id));
+        const unlockedIds = new Set((unlockedRes.data || []).map(u => u.prompt_id));
+
         return data.map(prompt => ({
           ...prompt,
-          is_favorited: favoriteIds.has(prompt.id)
+          is_favorited: favoriteIds.has(prompt.id),
+          is_unlocked: unlockedIds.has(prompt.id),
         })) as Prompt[];
       }
-      
-      return data as Prompt[];
+
+      return (data as Prompt[]).map(p => ({ ...p, is_unlocked: false }));
     },
     enabled: true, // Always fetch prompts
   });
+
+  // Update allPrompts when new data arrives
+  useEffect(() => {
+    if (prompts) {
+      if (page === 0) {
+        // Reset for new search/filter
+        setAllPrompts(prompts);
+      } else {
+        // Append new prompts
+        setAllPrompts(prev => [...prev, ...prompts]);
+      }
+      
+      // Check if we have more data
+      setHasMore(prompts.length === 20); // Assuming 20 items per page
+      setIsLoadingMore(false);
+    }
+  }, [prompts, page]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setPage(0);
+    setAllPrompts([]);
+    setHasMore(true);
+  }, [selectedCategory, selectedMediaType, selectedModel, debouncedSearchTerm]);
+
+  // Reset state when component mounts (when navigating back to explore)
+  useEffect(() => {
+    // Reset all state when component mounts
+    setPage(0);
+    setAllPrompts([]);
+    setHasMore(true);
+    setIsLoadingMore(false);
+    
+    // Invalidate and refetch the prompts query
+    queryClient.invalidateQueries({ queryKey: ['prompts'] });
+    queryClient.removeQueries({ queryKey: ['prompts'] });
+  }, [queryClient]);
+
+  // Cleanup when component unmounts
+  useEffect(() => {
+    return () => {
+      // Reset state when leaving the page
+      setSelectedPrompt(null);
+      setIsModalOpen(false);
+    };
+  }, []);
+
+  // Load more prompts
+  const loadMore = useCallback(() => {
+    if (!isLoadingMore && hasMore) {
+      setIsLoadingMore(true);
+      setPage(prev => prev + 1);
+    }
+  }, [isLoadingMore, hasMore]);
+
+  // Scroll detection for infinite scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 1000) {
+        loadMore();
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [loadMore]);
 
   // Fetch categories for filter
   const { data: categories } = useQuery({
@@ -100,6 +203,39 @@ const Explore = () => {
       return data;
     },
     enabled: true, // Always fetch categories
+  });
+
+  // Fetch distinct models for filter
+  const { data: models } = useQuery({
+    queryKey: ['models'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('prompts')
+        .select('model')
+        .not('model', 'is', null)
+        .order('model');
+      if (error) throw error;
+      const uniq = Array.from(new Set((data || []).map((r: any) => r.model).filter(Boolean)));
+      return uniq as string[];
+    },
+  });
+
+  // Fetch user profile for username
+  const { data: userProfile } = useQuery({
+    queryKey: ['user-profile', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
   });
 
   // Toggle favorite mutation
@@ -259,40 +395,133 @@ const Explore = () => {
   };
 
   const handleViewPrompt = async (promptId: string) => {
-    // Track view interaction
     try {
-      console.log('Tracking view for prompt:', promptId);
+      console.log('🔍 Tracking view for prompt (no charge):', promptId);
       
-      // Insert view interaction
-      const { error: interactionError } = await supabase
-        .from('user_interactions')
-        .insert({
-          prompt_id: promptId,
-          interaction_type: 'view',
-        });
-      
-      if (interactionError) throw interactionError;
-
-      // Increment view count in prompts table
-      const { error: viewCountError } = await (supabase as any).rpc('increment_view_count', {
+      // Method 1: Try using existing RPC increment if available
+      console.log('📊 Trying RPC function increment_view_count...');
+      const { data: rpcData, error: rpcError } = await (supabase as any).rpc('increment_view_count', {
         prompt_id: promptId
       });
       
-      if (viewCountError) throw viewCountError;
+      if (!rpcError) {
+        console.log('✅ RPC function worked!', rpcData);
+        await queryClient.invalidateQueries({ queryKey: ['prompts'] });
+        return;
+      }
+      
+      console.log('⚠️ RPC function failed, trying direct update...', rpcError);
+      
+      // Method 2: Simple increment approach
+      console.log('📊 Trying simple increment...');
+      const { data: currentPrompt, error: fetchError } = await supabase
+        .from('prompts')
+        .select('view_count, title')
+        .eq('id', promptId)
+        .single();
+      
+      if (fetchError) {
+        console.error('❌ Failed to fetch current view count:', fetchError);
+        return;
+      }
 
-      console.log('View tracked successfully for prompt:', promptId);
+      const currentCount = currentPrompt?.view_count || 0;
+      const newViewCount = currentCount + 1;
+      
+      console.log(`📈 Updating view count: ${currentCount} → ${newViewCount}`);
+      
+      const { data: updateData, error: updateError } = await supabase
+        .from('prompts')
+        .update({ 
+          view_count: newViewCount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', promptId)
+        .select('view_count, title');
+      
+      if (updateError) {
+        console.error('❌ All methods failed. Update error:', updateError);
+        console.error('Full error details:', JSON.stringify(updateError, null, 2));
+        
+        // Try one more approach - insert into user_interactions as fallback (already charged)
+        console.log('🔄 Trying fallback: insert into user_interactions...');
+        const { error: fallbackError } = await supabase
+          .from('user_interactions')
+          .insert({
+            prompt_id: promptId,
+            interaction_type: 'view',
+            created_at: new Date().toISOString()
+          });
+        
+        if (!fallbackError) {
+          console.log('✅ Fallback method worked - view tracked in user_interactions');
+        } else {
+          console.error('❌ Fallback also failed:', fallbackError);
+        }
+        return;
+      }
 
-      // Invalidate queries to refresh the view count
-      queryClient.invalidateQueries({ queryKey: ['prompts'] });
+      console.log('✅ Simple increment worked!');
+      console.log('📊 Updated data:', updateData);
+      await queryClient.invalidateQueries({ queryKey: ['prompts'] });
+      
     } catch (error) {
-      console.error('Failed to track view:', error);
+      console.error('💥 Complete failure:', error);
+      console.error('Error stack:', error.stack);
     }
   };
 
   const handleOpenModal = (prompt: Prompt) => {
+    console.log('🎯 Opening modal for prompt:', prompt.title, 'ID:', prompt.id);
     setSelectedPrompt(prompt);
     setIsModalOpen(true);
     handleViewPrompt(prompt.id);
+  };
+
+  const handleUnlockInModal = async (prompt: Prompt) => {
+    try {
+      const spend = await spendPromptCredit(prompt.id);
+      if (!spend?.success) {
+        toast({
+          title: 'Insufficient credits',
+          description: 'You have used all your monthly credits.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Persist unlocked state as a fallback (RPC should already do this)
+      try {
+        const { error: unlockErr } = await supabase
+          .from('user_unlocked_prompts')
+          .upsert({ user_id: user?.id as string, prompt_id: prompt.id });
+        if (unlockErr) {
+          // Non-fatal; UI will still reflect unlocked locally
+          console.warn('unlock upsert warning:', unlockErr);
+        }
+      } catch (e) {
+        console.warn('unlock upsert exception:', e);
+      }
+
+      // Optimistically mark unlocked in list and in selected prompt
+      setAllPrompts(prev => prev.map(p => p.id === prompt.id ? { ...p, is_unlocked: true } : p));
+      setSelectedPrompt(prev => prev ? { ...prev, is_unlocked: true } as Prompt : prev);
+
+      toast({ title: 'Unlocked', description: 'Prompt unlocked successfully.' });
+    } catch (err: any) {
+      console.error('unlock error:', err);
+      toast({
+        title: 'Unlock failed',
+        description: 'Please try again in a moment.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Debug function to test view count update
+  const testViewCountUpdate = async (promptId: string) => {
+    console.log('🧪 Testing view count update for:', promptId);
+    await handleViewPrompt(promptId);
   };
 
   const handleCloseModal = () => {
@@ -395,66 +624,165 @@ const Explore = () => {
   }
 
   return (
-    <div className="space-y-4">
-      {/* AI Studio Search and Filters */}
-      <div className="glass rounded-2xl p-6 border border-green-500/20">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center">
-          <div className="flex-1">
+    <div className="space-y-6">
+      {/* Top Section with Greeting and Search */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        {/* Personalized Greeting */}
+        <div className="space-y-2">
+          <h1 className="text-3xl font-semibold bg-gradient-to-r from-purple-500 to-purple-400 bg-clip-text text-transparent">
+            Hello, {userProfile?.full_name || user?.email?.split('@')[0] || 'User'}
+          </h1>
+          <p className="text-slate-300 text-lg">
+            Let's get started!
+          </p>
+        </div>
+
+        {/* Search and Filters - Top Right */}
+        <div className="w-full md:w-auto">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            {/* Search Bar */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-green-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-purple-500" />
               <Input
-                placeholder="Search AI prompts..."
+                placeholder="Search prompts..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-12 bg-background/50 border-green-500/20 focus:border-green-500/50 focus:ring-green-500/20"
+                className="pl-10 h-10 bg-background/50 border-purple-500/20 focus:border-purple-500/50 focus:ring-purple-500/20 rounded-full w-full md:w-64"
               />
+              {searchTerm !== debouncedSearchTerm && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+                </div>
+              )}
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-full md:w-36 h-10 bg-background/50 border-purple-500/20 focus:border-purple-500/50 rounded-full">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories?.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedMediaType} onValueChange={setSelectedMediaType}>
+                <SelectTrigger className="w-full md:w-28 h-10 bg-background/50 border-purple-500/20 focus:border-purple-500/50 rounded-full">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="image">Image</SelectItem>
+                  <SelectItem value="video">Video</SelectItem>
+                  <SelectItem value="audio">Audio</SelectItem>
+                  <SelectItem value="text">Text</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <SelectTrigger className="w-full md:w-40 h-10 bg-background/50 border-purple-500/20 focus:border-purple-500/50 rounded-full">
+                  <SelectValue placeholder="Model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Models</SelectItem>
+                  {(models || []).map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-full md:w-40 h-12 bg-background/50 border-green-500/20 focus:border-green-500/50">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {categories?.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={selectedMediaType} onValueChange={setSelectedMediaType}>
-          <SelectTrigger className="w-full md:w-32 h-12 bg-background/50 border-green-500/20 focus:border-green-500/50">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="image">Image</SelectItem>
-            <SelectItem value="video">Video</SelectItem>
-            <SelectItem value="audio">Audio</SelectItem>
-            <SelectItem value="text">Text</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={selectedDifficulty} onValueChange={setSelectedDifficulty}>
-          <SelectTrigger className="w-full md:w-32 h-12 bg-background/50 border-green-500/20 focus:border-green-500/50">
-            <SelectValue placeholder="Level" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Levels</SelectItem>
-            <SelectItem value="beginner">Beginner</SelectItem>
-            <SelectItem value="intermediate">Intermediate</SelectItem>
-            <SelectItem value="advanced">Advanced</SelectItem>
-          </SelectContent>
-        </Select>
         </div>
       </div>
 
-      {/* Results - Scattered Grid */}
+      {/* Featured Collections - 3 Card Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Collection Card 1 */}
+        <Card className="glass ai-card overflow-hidden group cursor-pointer hover:scale-105 transition-all duration-300">
+          <div className="relative h-48 overflow-hidden">
+            <img
+              src="/dryfruit.png"
+              alt="AI Art Collection"
+              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = '/placeholder.svg';
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <div className="absolute bottom-4 left-4 right-4">
+                <h3 className="text-white font-semibold text-lg mb-1">AI Art Collection</h3>
+                <p className="text-slate-300 text-sm">24 prompts</p>
+              </div>
+            </div>
+            <Badge className="absolute top-4 right-4 bg-purple-500/20 text-purple-300 border-purple-500/30">
+              New
+            </Badge>
+          </div>
+        </Card>
+
+        {/* Collection Card 2 */}
+        <Card className="glass ai-card overflow-hidden group cursor-pointer hover:scale-105 transition-all duration-300">
+          <div className="relative h-48 overflow-hidden">
+            <img
+              src="/asmr.png"
+              alt="Creative Writing"
+              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = '/placeholder.svg';
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <div className="absolute bottom-4 left-4 right-4">
+                <h3 className="text-white font-semibold text-lg mb-1">Creative Writing</h3>
+                <p className="text-slate-300 text-sm">18 prompts</p>
+              </div>
+            </div>
+            <Badge className="absolute top-4 right-4 bg-purple-500/20 text-purple-300 border-purple-500/30">
+              Popular
+            </Badge>
+          </div>
+        </Card>
+
+        {/* Collection Card 3 */}
+        <Card className="glass ai-card overflow-hidden group cursor-pointer hover:scale-105 transition-all duration-300">
+          <div className="relative h-48 overflow-hidden">
+            <img
+              src="/interior.png"
+              alt="Product Photography"
+              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = '/placeholder.svg';
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <div className="absolute bottom-4 left-4 right-4">
+                <h3 className="text-white font-semibold text-lg mb-1">Product Photography</h3>
+                <p className="text-slate-300 text-sm">32 prompts</p>
+              </div>
+            </div>
+            <Badge className="absolute top-4 right-4 bg-purple-500/20 text-purple-300 border-purple-500/30">
+              Trending
+            </Badge>
+          </div>
+        </Card>
+      </div>
+
+      {/* Explore Section */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold text-white">Explore</h2>
+        
+        {/* Results - Scattered Grid */}
       <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
-        {prompts?.length === 0 ? (
+        {allPrompts?.length === 0 && !isLoading ? (
           <div className="col-span-full text-center py-12">
             <p className="text-muted-foreground">No prompts found matching your criteria.</p>
             <p className="text-sm text-muted-foreground mt-2">
@@ -462,7 +790,7 @@ const Explore = () => {
             </p>
           </div>
         ) : (
-          prompts?.map((prompt, index) => {
+          allPrompts?.map((prompt, index) => {
             // Create varied heights for scattered effect
             const heights = ['h-48', 'h-56', 'h-64', 'h-52', 'h-60', 'h-44'];
             const randomHeight = heights[index % heights.length];
@@ -474,16 +802,21 @@ const Explore = () => {
                 onClick={() => handleOpenModal(prompt)}
               >
                 <Card className="overflow-hidden hover:shadow-xl transition-all duration-300 hover:scale-105 ai-card glass">
-                  <div className={`relative ${randomHeight} overflow-hidden`}>
+                  <div className="relative overflow-hidden bg-black/10">
                     <img
                       src={getImageUrl(prompt.primary_image_url)}
                       alt={prompt.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      className="w-full h-auto object-contain group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         target.src = '/placeholder.svg';
                       }}
                     />
+                    {prompt.is_unlocked && (
+                      <div className="absolute top-3 left-3">
+                        <Badge className="bg-black/70 backdrop-blur-sm text-emerald-200 border-white/30 shadow-md">Unlocked</Badge>
+                      </div>
+                    )}
                     
                     {/* Overlay with gradient */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -506,10 +839,10 @@ const Explore = () => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className={`h-6 w-6 p-0 bg-green-500/20 backdrop-blur-sm transition-all duration-300 ${
+                        className={`h-6 w-6 p-0 bg-purple-500/20 backdrop-blur-sm transition-all duration-300 ${
                           prompt.is_favorited 
-                            ? 'hover:bg-green-600/90' 
-                            : 'hover:bg-green-500/80'
+                            ? 'hover:bg-purple-600/90' 
+                            : 'hover:bg-purple-500/80'
                         }`}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -519,8 +852,8 @@ const Explore = () => {
                         <Heart 
                           className={`h-3 w-3 transition-all duration-300 ${
                             prompt.is_favorited 
-                              ? 'text-green-400 fill-green-400 scale-110' 
-                              : 'text-white hover:text-green-300'
+                              ? 'text-purple-400 fill-purple-400 scale-110' 
+                              : 'text-white hover:text-purple-300'
                           } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
                         />
                       </Button>
@@ -531,26 +864,38 @@ const Explore = () => {
             );
           })
         )}
+        
+        {/* Loading indicator for infinite scroll */}
+        {isLoadingMore && (
+          <div className="col-span-full text-center py-8">
+            <div className="inline-flex items-center gap-2 text-purple-400">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+              <span className="text-sm">Loading more prompts...</span>
+            </div>
+          </div>
+        )}
+        
+        {/* End of results indicator */}
+        {!hasMore && allPrompts.length > 0 && (
+          <div className="col-span-full text-center py-8">
+            <p className="text-slate-400 text-sm">You've reached the end of the results</p>
+          </div>
+        )}
+      </div>
       </div>
 
-      {/* AI Studio Modal */}
+      {/* Prompt Studio Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden p-0 glass border-green-500/20">
-          <DialogHeader className="p-6 pb-0">
-            <DialogTitle className="text-xl font-semibold gradient-text">
-              {selectedPrompt?.title}
-            </DialogTitle>
-          </DialogHeader>
-          
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden p-0 glass border-purple-500/20">
           {selectedPrompt && (
-            <div className="flex gap-6 overflow-hidden px-6 pb-6">
-              {/* Left side - Image */}
-              <div className="flex-1 min-w-0">
-                <div className="relative h-96 rounded-lg overflow-hidden bg-muted">
+            <div className="flex gap-0 overflow-hidden h-full">
+              {/* Left side - Image (60% width) */}
+              <div className="w-[60%] min-w-0">
+                <div className="relative h-full rounded-l-lg overflow-hidden bg-black/20 flex items-center justify-center">
                   <img
                     src={getImageUrl(selectedPrompt.primary_image_url)}
                     alt={selectedPrompt.title}
-                    className="w-full h-full object-cover"
+                    className="max-w-full max-h-full object-contain"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.src = '/placeholder.svg';
@@ -562,7 +907,7 @@ const Explore = () => {
                     <Button 
                       size="icon" 
                       variant="secondary" 
-                      className="bg-green-500/20 backdrop-blur-sm hover:bg-green-500/30 text-green-400 hover:text-green-300 transition-colors border border-green-500/30"
+                      className="bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-colors border border-purple-500/30"
                       onClick={() => handleDownloadImage(getImageUrl(selectedPrompt.primary_image_url), selectedPrompt.title)}
                     >
                       <Download className="h-4 w-4" />
@@ -570,7 +915,7 @@ const Explore = () => {
                     <Button 
                       size="icon" 
                       variant="secondary" 
-                      className="bg-green-500/20 backdrop-blur-sm hover:bg-green-500/30 text-green-400 hover:text-green-300 transition-colors border border-green-500/30"
+                      className="bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-colors border border-purple-500/30"
                       onClick={() => handleSharePrompt(selectedPrompt)}
                     >
                       <Share2 className="h-4 w-4" />
@@ -579,8 +924,17 @@ const Explore = () => {
                 </div>
               </div>
 
-              {/* Right side - Prompt details */}
-              <div className="flex-1 min-w-0 space-y-4 overflow-y-auto">
+              {/* Right side - Prompt details (40% width) */}
+              <div className="w-[40%] min-w-0 space-y-6 overflow-y-auto p-6">
+                {/* Title moved to right column */}
+                <div>
+                  <h2 className="text-2xl font-bold gradient-text mb-2">
+                    {selectedPrompt.title}
+                  </h2>
+                  {selectedPrompt.is_unlocked && (
+                    <Badge className="bg-black/70 backdrop-blur-sm text-emerald-200 border-white/30 shadow-md">Unlocked</Badge>
+                  )}
+                </div>
                 {/* Category and badges */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="secondary">
@@ -589,6 +943,11 @@ const Explore = () => {
                   <Badge variant="outline">
                     {selectedPrompt.media_type}
                   </Badge>
+                  {selectedPrompt.model && (
+                    <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+                      {selectedPrompt.model}
+                    </Badge>
+                  )}
                   <Badge 
                     variant={selectedPrompt.difficulty_level === 'beginner' ? 'default' : 
                            selectedPrompt.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
@@ -613,13 +972,6 @@ const Explore = () => {
                   </div>
                 </div>
 
-                {/* Prompt text */}
-                <div className="space-y-2">
-                  <h3 className="font-semibold">Prompt</h3>
-                  <div className="bg-muted p-4 rounded-lg">
-                    <p className="text-sm whitespace-pre-wrap">{selectedPrompt.prompt_text}</p>
-                  </div>
-                </div>
 
                 {/* Style tags */}
                 {selectedPrompt.style_tags && selectedPrompt.style_tags.length > 0 && (
@@ -635,47 +987,74 @@ const Explore = () => {
                   </div>
                 )}
 
-                {/* Description */}
+                {/* Prompt */}
                 {selectedPrompt.prompt_text && (
                   <div className="space-y-2">
-                    <h3 className="font-semibold">Description</h3>
-                    <p className="text-sm text-muted-foreground">{selectedPrompt.prompt_text}</p>
+                    <h3 className="font-semibold">Prompt</h3>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <p className={`text-sm whitespace-pre-wrap ${selectedPrompt.is_unlocked ? '' : 'blur-sm select-none'}`}>
+                        {selectedPrompt.prompt_text}
+                      </p>
+                    </div>
                   </div>
                 )}
 
                 {/* Actions */}
                 <div className="flex gap-2 pt-4 border-t border-border/50">
-                  <Button 
-                    onClick={() => handleCopyPrompt(selectedPrompt.prompt_text, selectedPrompt.title, selectedPrompt.id)}
-                    className="flex-1 ai-button"
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Prompt
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => handleToggleFavorite(selectedPrompt)}
-                    disabled={toggleFavoriteMutation.isPending}
-                    className={`flex items-center gap-2 transition-all duration-300 ${
-                      selectedPrompt.is_favorited 
-                        ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
-                        : 'hover:bg-green-500/10 border-green-500/20'
-                    }`}
-                  >
-                    <Heart 
-                      className={`h-4 w-4 transition-all duration-300 ${
-                        selectedPrompt.is_favorited 
-                          ? 'text-green-400 fill-green-400 scale-110' 
-                          : 'text-muted-foreground hover:text-green-400'
-                      } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
-                    />
-                    {toggleFavoriteMutation.isPending 
-                      ? 'Updating...' 
-                      : selectedPrompt.is_favorited 
-                        ? 'Liked' 
-                        : 'Like'
-                    }
-                  </Button>
+                  {selectedPrompt.is_unlocked ? (
+                    <>
+                      <Button 
+                        onClick={() => handleCopyPrompt(selectedPrompt.prompt_text, selectedPrompt.title, selectedPrompt.id)}
+                        className="flex-1 ai-button"
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy Prompt
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={() => handleToggleFavorite(selectedPrompt)}
+                        disabled={toggleFavoriteMutation.isPending}
+                        className={`flex items-center gap-2 transition-all duration-300 ${
+                          selectedPrompt.is_favorited 
+                            ? 'bg-purple-500/20 border-purple-500/50 text-purple-400 hover:bg-purple-500/30' 
+                            : 'hover:bg-purple-500/10 border-purple-500/20'
+                        }`}
+                      >
+                        <Heart 
+                          className={`h-4 w-4 transition-all duration-300 ${
+                            selectedPrompt.is_favorited 
+                              ? 'text-purple-400 fill-purple-400 scale-110' 
+                              : 'text-muted-foreground hover:text-purple-400'
+                          } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
+                        />
+                        {toggleFavoriteMutation.isPending 
+                          ? 'Updating...' 
+                          : selectedPrompt.is_favorited 
+                            ? 'Liked' 
+                            : 'Like'
+                        }
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button 
+                        onClick={() => handleUnlockInModal(selectedPrompt)}
+                        className="flex-1 ai-button"
+                        disabled={isSpendingCredit}
+                      >
+                        <Lock className="h-4 w-4 mr-2" />
+                        {isSpendingCredit ? 'Unlocking...' : 'Unlock (1 credit)'}
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        disabled
+                        className="flex items-center gap-2 opacity-60"
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copy Prompt
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

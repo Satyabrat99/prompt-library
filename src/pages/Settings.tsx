@@ -163,11 +163,11 @@ const Settings = () => {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="fullName">Full Name</Label>
+                    <Label htmlFor="fullName">Username</Label>
                     <Input
                       id="fullName"
                       name="fullName"
-                      placeholder="Enter your full name"
+                      placeholder="Enter your username"
                       defaultValue={profile?.full_name || ''}
                     />
                   </div>

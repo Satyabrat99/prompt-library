@@ -75,8 +75,8 @@ A modern, dark-themed AI prompt library built with React, TypeScript, and Supaba
 
 5. **Start the development server**
    ```bash
-   npm run dev
-   ```
+npm run dev
+```
 
 6. **Open your browser**
    Navigate to `http://localhost:5173`

@@ -129,7 +129,7 @@ const ImageUpload = ({
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex items-center gap-2 text-sm text-green-600">
+              <div className="flex items-center gap-2 text-sm text-purple-600">
                 <Check className="h-4 w-4" />
                 Image uploaded successfully
               </div>

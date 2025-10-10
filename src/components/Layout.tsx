@@ -26,6 +26,7 @@ import {
   Zap
 } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
+import { useCredits } from '../hooks/useCredits';
 
 interface LayoutProps {
   children: ReactNode;
@@ -62,6 +63,9 @@ const Layout = ({ children }: LayoutProps) => {
     setMobileMenuOpen(false);
   };
 
+  const { toast } = useToast();
+  const { credits, isLoadingCredits } = useCredits();
+  
   const handleSignOut = async () => {
     await signOut();
     toast({
@@ -82,17 +86,13 @@ const Layout = ({ children }: LayoutProps) => {
   const adminNavigation = [
     { name: 'Admin Dashboard', href: '/admin/dashboard', icon: Home },
     { name: 'Upload Prompt', href: '/admin/upload', icon: Upload },
-    { name: 'Create Prompt', href: '/admin/prompts/new', icon: PlusCircle },
+    { name: 'Content', href: '/admin/content', icon: FileText },
     { name: 'Manage Categories', href: '/admin/categories', icon: Grid3X3 },
     { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
   ];
 
   return (
-    <div className="flex h-screen bg-background relative overflow-hidden">
-      {/* AI Studio Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 via-transparent to-blue-500/5 pointer-events-none" />
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-green-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="flex h-screen bg-transparent relative overflow-hidden">
       {/* Mobile sidebar overlay */}
       {mobileMenuOpen && (
         <div 
@@ -108,17 +108,35 @@ const Layout = ({ children }: LayoutProps) => {
         fixed md:relative z-50 md:z-auto
         w-64 md:w-auto h-full md:h-auto
         flex flex-col transition-all duration-300 ease-in-out
-        bg-sidebar/80 backdrop-blur-md md:bg-sidebar/80
-        border-r border-border/50
+        bg-white/5 backdrop-blur-xl md:bg-white/5
+        border-r border-white/20
+        relative overflow-hidden
       `}>
-        <div className="flex flex-1 flex-col bg-sidebar">
+        {/* Frozen Ice Crystals Effect */}
+        <div className="absolute inset-0 opacity-30 pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-purple-300/40 rounded-full blur-sm animate-pulse"></div>
+          <div className="absolute top-1/3 right-1/3 w-1 h-1 bg-purple-400/50 rounded-full blur-sm animate-pulse delay-1000"></div>
+          <div className="absolute top-1/2 left-1/3 w-1.5 h-1.5 bg-purple-300/30 rounded-full blur-sm animate-pulse delay-2000"></div>
+          <div className="absolute bottom-1/3 right-1/4 w-1 h-1 bg-purple-400/40 rounded-full blur-sm animate-pulse delay-500"></div>
+          <div className="absolute bottom-1/4 left-1/2 w-2 h-2 bg-purple-300/35 rounded-full blur-sm animate-pulse delay-1500"></div>
+        </div>
+        
+        {/* Subtle Texture Overlay */}
+        <div className="absolute inset-0 opacity-15 pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-br from-transparent via-purple-500/8 to-transparent"></div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(147,51,234,0.12)_0%,transparent_50%)]"></div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_75%,rgba(147,51,234,0.08)_0%,transparent_50%)]"></div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(147,51,234,0.06)_0%,transparent_70%)]"></div>
+        </div>
+        
+        <div className="flex flex-1 flex-col bg-transparent relative z-10">
           <div className="flex h-16 items-center px-6">
             {!sidebarCollapsed && (
               <div className="flex items-center space-x-2">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center glow">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center glow">
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                <h1 className="text-xl font-bold gradient-text">AI Studio</h1>
+                <h1 className="text-xl font-bold gradient-text">Prompt Studio</h1>
               </div>
             )}
             <Button
@@ -137,7 +155,7 @@ const Layout = ({ children }: LayoutProps) => {
               <>
                 {!sidebarCollapsed && (
                   <div className="mb-4">
-                    <h3 className="px-2 text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+                    <h3 className="px-2 text-xs font-semibold text-purple-400 uppercase tracking-wider">
                       Admin Panel
                     </h3>
                   </div>
@@ -151,10 +169,10 @@ const Layout = ({ children }: LayoutProps) => {
                       key={item.name}
                       to={item.href}
                       onClick={handleNavigation}
-                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${
+                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${
                         isActive
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                          ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
+                          : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
                       }`}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
@@ -169,7 +187,7 @@ const Layout = ({ children }: LayoutProps) => {
               <>
                 {!sidebarCollapsed && (
                   <div className="mb-4">
-                    <h3 className="px-2 text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+                    <h3 className="px-2 text-xs font-semibold text-purple-400 uppercase tracking-wider">
                       Browse
                     </h3>
                   </div>
@@ -183,10 +201,10 @@ const Layout = ({ children }: LayoutProps) => {
                       key={item.name}
                       to={item.href}
                       onClick={handleNavigation}
-                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${
+                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${
                         isActive
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                          ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
+                          : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
                       }`}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
@@ -199,14 +217,66 @@ const Layout = ({ children }: LayoutProps) => {
             )}
           </nav>
           
-          <div className="flex-shrink-0 p-4">
+          <div className="flex-shrink-0 p-4 space-y-2">
+            {/* Credits indicator - hidden when collapsed */}
+            {!sidebarCollapsed && (
+              <div className="inline-flex items-center gap-2 text-xs text-slate-300 px-2 py-1 rounded-md bg-white/5 border border-white/10 mb-2 w-auto">
+                <span className="opacity-80">Credits</span>
+                <span className="font-medium tabular-nums">
+                  {isLoadingCredits ? '...' : `${credits?.credits_remaining ?? '-'}/${credits?.monthly_quota ?? '-'}`}
+                </span>
+              </div>
+            )}
+            {/* Avatar Button */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${
+                    sidebarCollapsed 
+                      ? 'h-10 w-10 p-0 mx-auto justify-center' 
+                      : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
+                  }`}
+                  title={sidebarCollapsed ? 'Profile' : undefined}
+                >
+                  <Avatar className={`${sidebarCollapsed ? 'mx-auto h-5 w-5' : 'mr-3 h-6 w-6'}`}>
+                    <AvatarFallback className={`${sidebarCollapsed ? 'text-xs' : 'text-sm'}`}>
+                      {user?.email?.charAt(0).toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  {!sidebarCollapsed && (
+                    <span className="truncate">{user?.email?.split('@')[0] || 'User'}</span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <div className="flex items-center justify-start gap-2 p-2">
+                  <div className="flex flex-col space-y-1 leading-none">
+                    <p className="font-medium text-sm">{user?.email}</p>
+                  </div>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/settings" className="flex items-center">
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            {/* Settings Button */}
             <Link
               to="/settings"
               onClick={handleNavigation}
-              className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${
+              className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${
                 location.pathname === '/settings'
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
               }`}
               title={sidebarCollapsed ? 'Settings' : undefined}
             >
@@ -219,65 +289,9 @@ const Layout = ({ children }: LayoutProps) => {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top header */}
-        <header className="bg-background/80 backdrop-blur-md border-b border-border/50 relative z-10">
-          <div className="flex h-16 items-center justify-between px-6">
-            <div className="flex items-center gap-4">
-              {/* Mobile menu button */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="md:hidden h-8 w-8 p-0 hover:bg-white/10"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-              
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Zap className="h-5 w-5 text-green-500" />
-                {isAdmin 
-                  ? adminNavigation.find(item => item.href === location.pathname)?.name || 'Admin Panel'
-                  : userNavigation.find(item => item.href === location.pathname)?.name || 'AI Studio'
-                }
-              </h2>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>
-                        {user?.email?.charAt(0).toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                  <div className="flex items-center justify-start gap-2 p-2">
-                    <div className="flex flex-col space-y-1 leading-none">
-                      <p className="font-medium text-sm">{user?.email}</p>
-                    </div>
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to="/settings" className="flex items-center">
-                      <User className="mr-2 h-4 w-4" />
-                      Profile
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSignOut}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </header>
 
         {/* Main content area */}
-        <main className="flex-1 overflow-y-auto bg-background/50 backdrop-blur-sm p-6 relative z-10">
+        <main className="flex-1 overflow-y-auto bg-white/2 backdrop-blur-sm p-6 relative z-10">
           {children}
         </main>
       </div>

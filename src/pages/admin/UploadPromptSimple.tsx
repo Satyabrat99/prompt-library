@@ -39,6 +39,7 @@ const UploadPromptSimple = () => {
     style_tags: [] as string[],
     industry_tags: [] as string[],
     image_url: '',
+    model: '',
   });
 
   const [newStyleTag, setNewStyleTag] = useState('');
@@ -76,6 +77,10 @@ const UploadPromptSimple = () => {
         created_by: user.id,
       };
 
+      if (promptData.model) {
+        insertData.model = promptData.model;
+      }
+
       // Only add category_id if it's a valid UUID (not 'no-category')
       if (formData.category_id && formData.category_id !== 'no-category') {
         insertData.category_id = formData.category_id;
@@ -112,6 +117,7 @@ const UploadPromptSimple = () => {
         style_tags: [],
         industry_tags: [],
         image_url: '',
+        model: '',
       });
       setUploadedImage(null);
       setNewStyleTag('');
@@ -291,11 +297,11 @@ const UploadPromptSimple = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-2">
           {/* Main Upload Area */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="space-y-6">
             {/* Image Upload Section */}
-            <Card>
+            <Card className="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <ImageIcon className="h-5 w-5" />
@@ -331,7 +337,7 @@ const UploadPromptSimple = () => {
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute top-2 right-2">
-                        <Badge variant="secondary" className="bg-green-500 text-white">
+                        <Badge variant="secondary" className="bg-purple-500 text-white">
                           <Check className="h-3 w-3 mr-1" />
                           Uploaded
                         </Badge>
@@ -346,7 +352,7 @@ const UploadPromptSimple = () => {
             </Card>
 
             {/* Prompt Information */}
-            <Card>
+            <Card className="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
@@ -357,15 +363,27 @@ const UploadPromptSimple = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title *</Label>
-                  <Input
-                    id="title"
-                    value={formData.title}
-                    onChange={(e) => handleInputChange('title', e.target.value)}
-                    placeholder="Enter a descriptive title for your prompt"
-                    required
-                  />
+                {/* Title + Model in one row */}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="title">Title *</Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => handleInputChange('title', e.target.value)}
+                      placeholder="Enter a descriptive title"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="model">Model</Label>
+                    <Input
+                      id="model"
+                      value={formData.model}
+                      onChange={(e) => handleInputChange('model', e.target.value)}
+                      placeholder="e.g., Midjourney v6, GPT-4o, Flux"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -380,19 +398,9 @@ const UploadPromptSimple = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    placeholder="Optional description explaining the prompt or its use case..."
-                    rows={3}
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
+                {/* Category + Media + Difficulty */}
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2 md:col-span-1">
                     <Label htmlFor="category">Category</Label>
                     <Select value={formData.category_id} onValueChange={(value) => handleInputChange('category_id', value)}>
                       <SelectTrigger>
@@ -408,9 +416,22 @@ const UploadPromptSimple = () => {
                       </SelectContent>
                     </Select>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="difficulty_level">Difficulty Level</Label>
+                  <div className="space-y-2 md:col-span-1">
+                    <Label htmlFor="media_type">Type</Label>
+                    <Select value={formData.media_type} onValueChange={(value) => handleInputChange('media_type', value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="image">Image</SelectItem>
+                        <SelectItem value="video">Video</SelectItem>
+                        <SelectItem value="audio">Audio</SelectItem>
+                        <SelectItem value="text">Text</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 md:col-span-1">
+                    <Label htmlFor="difficulty_level">Difficulty</Label>
                     <Select value={formData.difficulty_level} onValueChange={(value) => handleInputChange('difficulty_level', value)}>
                       <SelectTrigger>
                         <SelectValue />
@@ -423,11 +444,55 @@ const UploadPromptSimple = () => {
                     </Select>
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    placeholder="Optional description explaining the prompt or its use case..."
+                    rows={3}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Model Tag */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle>Model</CardTitle>
+                <CardDescription>
+                  Specify the generative model used for this prompt
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="model">Model</Label>
+                  <Input
+                    id="model"
+                    value={formData.model}
+                    onChange={(e) => handleInputChange('model', e.target.value)}
+                    placeholder="e.g., Midjourney v6, GPT-4o, Flux, Nano Banana"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {['Midjourney', 'Midjourney v6', 'GPT-4o', 'GPT-4.1', 'Stable Diffusion', 'Flux', 'Nano Banana'].map((m) => (
+                    <Badge
+                      key={m}
+                      variant="outline"
+                      className="cursor-pointer hover:bg-white/10"
+                      onClick={() => handleInputChange('model', m)}
+                    >
+                      {m}
+                    </Badge>
+                  ))}
+                </div>
               </CardContent>
             </Card>
 
             {/* Tags */}
-            <Card>
+            <Card className="glass">
               <CardHeader>
                 <CardTitle>Tags</CardTitle>
                 <CardDescription>
@@ -500,43 +565,34 @@ const UploadPromptSimple = () => {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Preview */}
-            <Card>
+            {/* Larger live preview (non-sticky) */}
+            <Card className="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <ImageIcon className="h-5 w-5" />
-                  Explore Page Preview
+                  Live Preview
                 </CardTitle>
-                <CardDescription>
-                  How your prompt will appear in the scattered cards
-                </CardDescription>
+                <CardDescription>How it will appear to users</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {formData.image_url ? (
-                    <div className="relative h-32 rounded-lg overflow-hidden bg-muted">
-                      <img
-                        src={formData.image_url}
-                        alt={formData.title || 'Preview'}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent">
-                        <div className="absolute bottom-2 left-2 right-2">
-                          <h4 className="text-white font-semibold text-sm line-clamp-1">
-                            {formData.title || 'Untitled Prompt'}
-                          </h4>
-                          <p className="text-white/80 text-xs line-clamp-2">
-                            {formData.prompt_text || 'No prompt text yet...'}
-                          </p>
+              <CardContent className="space-y-4">
+                {formData.image_url ? (
+                  <div className="relative h-80 rounded-lg overflow-hidden bg-muted">
+                    <img
+                      src={formData.image_url}
+                      alt={formData.title || 'Preview'}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent">
+                      <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary" className="text-xs bg-white/90">
+                            {formData.category_id === 'no-category' ? 'Uncategorized' : 
+                             categories?.find(c => c.id === formData.category_id)?.name || 'Uncategorized'}
+                          </Badge>
+                          {formData.model && (
+                            <Badge className="text-xs bg-emerald-500/20 text-emerald-300 border-emerald-500/30">{formData.model}</Badge>
+                          )}
                         </div>
-                      </div>
-                      <div className="absolute top-2 left-2">
-                        <Badge variant="secondary" className="text-xs bg-white/90">
-                          {formData.category_id === 'no-category' ? 'Uncategorized' : 
-                           categories?.find(c => c.id === formData.category_id)?.name || 'Uncategorized'}
-                        </Badge>
-                      </div>
-                      <div className="absolute top-2 right-2">
                         <Badge 
                           variant={formData.difficulty_level === 'beginner' ? 'default' : 
                                  formData.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
@@ -545,26 +601,50 @@ const UploadPromptSimple = () => {
                           {formData.difficulty_level}
                         </Badge>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="h-32 rounded-lg bg-muted flex items-center justify-center">
-                      <div className="text-center text-muted-foreground">
-                        <ImageIcon className="h-8 w-8 mx-auto mb-2" />
-                        <p className="text-sm">Upload an image to see preview</p>
+                      <div className="absolute bottom-3 left-3 right-3">
+                        <h4 className="text-white font-semibold text-sm line-clamp-1">
+                          {formData.title || 'Untitled Prompt'}
+                        </h4>
+                        <p className="text-white/80 text-xs line-clamp-2">
+                          {formData.prompt_text || 'No prompt text yet...'}
+                        </p>
                       </div>
                     </div>
-                  )}
-                  
-                  <div className="flex flex-wrap gap-1">
-                    {formData.style_tags.slice(0, 3).map((tag) => (
+                  </div>
+                ) : (
+                  <div className="h-80 rounded-lg bg-muted flex items-center justify-center">
+                    <div className="text-center text-muted-foreground">
+                      <ImageIcon className="h-8 w-8 mx-auto mb-2" />
+                      <p className="text-sm">Upload an image to see live preview</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Prompt snippet and tags */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Prompt snippet</Label>
+                  <div className="bg-muted/50 rounded-md p-3 max-h-28 overflow-auto">
+                    <p className="text-xs whitespace-pre-wrap">
+                      {formData.prompt_text || 'Your prompt text will appear here...'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Tags</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.style_tags.map((tag) => (
                       <Badge key={tag} variant="outline" className="text-xs">
                         {tag}
                       </Badge>
                     ))}
-                    {formData.style_tags.length > 3 && (
-                      <Badge variant="outline" className="text-xs">
-                        +{formData.style_tags.length - 3} more
+                    {formData.industry_tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        {tag}
                       </Badge>
+                    ))}
+                    {!formData.style_tags.length && !formData.industry_tags.length && (
+                      <span className="text-xs text-muted-foreground">No tags yet</span>
                     )}
                   </div>
                 </div>
@@ -572,7 +652,7 @@ const UploadPromptSimple = () => {
             </Card>
 
             {/* Actions */}
-            <Card>
+            <Card className="glass">
               <CardHeader>
                 <CardTitle>Actions</CardTitle>
               </CardHeader>
@@ -588,7 +668,7 @@ const UploadPromptSimple = () => {
             </Card>
 
             {/* Tips */}
-            <Card>
+            <Card className="glass">
               <CardHeader>
                 <CardTitle>Upload Tips</CardTitle>
               </CardHeader>

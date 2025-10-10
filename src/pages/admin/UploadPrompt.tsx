@@ -229,7 +229,7 @@ const UploadPrompt = () => {
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute top-2 right-2">
-                        <Badge variant="secondary" className="bg-green-500 text-white">
+                        <Badge variant="secondary" className="bg-purple-500 text-white">
                           <Check className="h-3 w-3 mr-1" />
                           Uploaded
                         </Badge>

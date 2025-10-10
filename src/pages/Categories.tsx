@@ -65,17 +65,17 @@ const Categories = () => {
 
   return (
     <div className="space-y-8">
-      {/* AI Studio Header */}
+      {/* Prompt Studio Header */}
       <div className="text-center space-y-4">
-        <div className="inline-flex items-center gap-2 bg-green-500/10 px-4 py-2 rounded-full border border-green-500/20">
-          <Sparkles className="h-4 w-4 text-green-500" />
-          <span className="text-sm font-medium text-green-400">AI Categories</span>
+        <div className="inline-flex items-center gap-2 bg-purple-500/10 px-4 py-2 rounded-full border border-purple-500/20">
+          <Sparkles className="h-4 w-4 text-purple-500" />
+          <span className="text-sm font-medium text-purple-400">Prompt Categories</span>
         </div>
         <h1 className="text-4xl font-bold gradient-text">
           Explore Categories
         </h1>
         <p className="text-muted-foreground max-w-xl mx-auto text-lg">
-          Discover AI prompts organized by category, style, and industry
+          Discover prompts organized by category, style, and industry
         </p>
       </div>
 
@@ -135,7 +135,7 @@ const Categories = () => {
                     asChild 
                     size="sm"
                     variant="ghost"
-                    className="h-10 w-10 rounded-full bg-green-500/20 backdrop-blur-sm hover:bg-green-500/30 text-green-400 hover:text-green-300 transition-all duration-300 group/btn p-0 border border-green-500/30 ai-button"
+                    className="h-10 w-10 rounded-full bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-all duration-300 group/btn p-0 border border-purple-500/30 ai-button"
                   >
                     <Link to={`/categories/${category.slug}`}>
                       <ArrowRight className="h-4 w-4 group-hover/btn:translate-x-0.5 transition-transform" />
@@ -157,7 +157,7 @@ const Categories = () => {
       )}
 
       {/* AI Studio Quick Actions */}
-      <div className="glass rounded-2xl p-8 border border-green-500/20 glow">
+      <div className="glass rounded-2xl p-8 border border-purple-500/20 glow">
         <div className="text-center space-y-4">
           <h3 className="text-2xl font-bold gradient-text">Ready to Explore?</h3>
           <p className="text-muted-foreground text-lg">

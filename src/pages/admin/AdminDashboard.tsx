@@ -340,7 +340,7 @@ const AdminDashboard = () => {
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">99.9%</div>
+              <div className="text-2xl font-bold text-purple-600">99.9%</div>
               <p className="text-sm text-muted-foreground">Uptime</p>
             </div>
             <div className="text-center">

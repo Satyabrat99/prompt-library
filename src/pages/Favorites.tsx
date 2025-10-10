@@ -5,7 +5,7 @@ import { Tables } from '@/integrations/supabase/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Heart, Eye, Copy, Download } from 'lucide-react';
+import { Heart, Eye, Copy, Download, Share2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -172,6 +172,7 @@ const Favorites = () => {
   };
 
   const handleOpenModal = async (prompt: Prompt) => {
+    console.log('Opening modal for prompt:', prompt);
     setSelectedPrompt(prompt);
     setIsModalOpen(true);
     
@@ -179,7 +180,7 @@ const Favorites = () => {
     try {
       console.log('Tracking view for prompt:', prompt.id);
       
-      // Insert view interaction
+      // Insert view interaction (optional - for analytics)
       const { error: interactionError } = await supabase
         .from('user_interactions')
         .insert({
@@ -187,16 +188,35 @@ const Favorites = () => {
           interaction_type: 'view',
         });
       
-      if (interactionError) throw interactionError;
+      if (interactionError) {
+        console.warn('Failed to insert view interaction:', interactionError);
+      }
 
-      // Increment view count in prompts table
-      const { error: viewCountError } = await supabase.rpc('increment_view_count', {
-        prompt_id: prompt.id
-      });
+      // Increment view count in prompts table using direct update
+      const { data: currentPrompt, error: fetchError } = await supabase
+        .from('prompts')
+        .select('view_count')
+        .eq('id', prompt.id)
+        .single();
       
-      if (viewCountError) throw viewCountError;
+      if (fetchError) {
+        console.error('Failed to fetch current view count:', fetchError);
+        return;
+      }
 
-      console.log('View tracked successfully for prompt:', prompt.id);
+      const newViewCount = (currentPrompt?.view_count || 0) + 1;
+      
+      const { error: updateError } = await supabase
+        .from('prompts')
+        .update({ view_count: newViewCount })
+        .eq('id', prompt.id);
+      
+      if (updateError) {
+        console.error('Failed to update view count:', updateError);
+        return;
+      }
+
+      console.log('View count updated successfully:', newViewCount);
 
       // Invalidate queries to refresh the view count
       queryClient.invalidateQueries({ queryKey: ['prompts'] });
@@ -356,71 +376,77 @@ const Favorites = () => {
         </div>
       </div>
 
-      {/* Favorites Grid */}
+      {/* Favorites Grid - Scattered Style */}
       {favoritePrompts && favoritePrompts.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {favoritePrompts.map((prompt) => (
-            <div
-              key={prompt.id}
-              className="break-inside-avoid mb-4 cursor-pointer group"
-              onClick={() => handleOpenModal(prompt)}
-            >
-              <Card className="overflow-hidden hover:shadow-xl transition-all duration-300 hover:scale-105">
-                <div className="relative h-48 overflow-hidden">
-                  <img
-                    src={getImageUrl(prompt.primary_image_url)}
-                    alt={prompt.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = '/placeholder.svg';
-                    }}
-                  />
-                  
-                  {/* Overlay with gradient */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <div className="absolute bottom-4 left-4 right-4">
-                      <h3 className="text-white font-semibold text-sm line-clamp-2 mb-1">
-                        {prompt.title}
-                      </h3>
-                      <p className="text-white/80 text-xs line-clamp-2">
-                        {prompt.prompt_text}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Stats overlay */}
-                  <div className="absolute top-3 right-3 flex gap-2">
-                    <div className="flex items-center gap-1 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1">
-                      <Eye className="h-3 w-3 text-white" />
-                      <span className="text-white text-xs">{prompt.view_count || 0}</span>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className={`h-6 w-6 p-0 bg-black/50 backdrop-blur-sm transition-all duration-300 ${
-                        prompt.is_favorited 
-                          ? 'hover:bg-red-600/90' 
-                          : 'hover:bg-red-500/80'
-                      }`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleFavorite(prompt);
+        <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
+          {favoritePrompts.map((prompt, index) => {
+            // Create varied heights for scattered effect
+            const heights = ['h-48', 'h-56', 'h-64', 'h-52', 'h-60', 'h-44'];
+            const randomHeight = heights[index % heights.length];
+            
+            return (
+              <div 
+                key={prompt.id} 
+                className={`break-inside-avoid mb-4 cursor-pointer group`}
+                onClick={() => handleOpenModal(prompt)}
+              >
+                <Card className="overflow-hidden hover:shadow-xl transition-all duration-300 hover:scale-105 ai-card glass">
+                  <div className="relative overflow-hidden bg-black/10">
+                    <img
+                      src={getImageUrl(prompt.primary_image_url)}
+                      alt={prompt.title}
+                      className="w-full h-auto object-contain group-hover:scale-105 transition-transform duration-500"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = '/placeholder.svg';
                       }}
-                    >
-                      <Heart 
-                        className={`h-3 w-3 transition-all duration-300 ${
+                    />
+                    
+                    {/* Overlay with gradient */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <h3 className="text-white font-semibold text-sm line-clamp-2 mb-1">
+                          {prompt.title}
+                        </h3>
+                        <p className="text-white/80 text-xs line-clamp-2">
+                          {prompt.prompt_text}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Stats overlay */}
+                    <div className="absolute top-3 right-3 flex gap-2">
+                      <div className="flex items-center gap-1 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1">
+                        <Eye className="h-3 w-3 text-white" />
+                        <span className="text-white text-xs">{prompt.view_count || 0}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className={`h-6 w-6 p-0 bg-black/50 backdrop-blur-sm transition-all duration-300 ${
                           prompt.is_favorited 
-                            ? 'text-red-500 fill-red-500 scale-110' 
-                            : 'text-white hover:text-red-300'
-                        } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
-                      />
-                    </Button>
+                            ? 'hover:bg-purple-600/90' 
+                            : 'hover:bg-purple-500/80'
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleFavorite(prompt);
+                        }}
+                      >
+                        <Heart 
+                          className={`h-3 w-3 transition-all duration-300 ${
+                            prompt.is_favorited 
+                              ? 'text-purple-500 fill-purple-500 scale-110' 
+                              : 'text-white hover:text-purple-300'
+                          } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
+                        />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </Card>
-            </div>
-          ))}
+                </Card>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12">
@@ -435,24 +461,18 @@ const Favorites = () => {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Prompt Studio Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden p-0">
-          <DialogHeader className="p-6 pb-0">
-            <DialogTitle className="text-xl font-semibold">
-              {selectedPrompt?.title}
-            </DialogTitle>
-          </DialogHeader>
-          
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden p-0 glass border-purple-500/20">
           {selectedPrompt && (
-            <div className="flex gap-6 overflow-hidden">
-              {/* Left side - Image */}
-              <div className="flex-1 min-w-0">
-                <div className="relative h-96 rounded-lg overflow-hidden bg-muted">
+            <div className="flex gap-0 overflow-hidden h-full">
+              {/* Left side - Image (60% width) */}
+              <div className="w-[60%] min-w-0">
+                <div className="relative h-full rounded-l-lg overflow-hidden bg-black/20 flex items-center justify-center">
                   <img
                     src={getImageUrl(selectedPrompt.primary_image_url)}
                     alt={selectedPrompt.title}
-                    className="w-full h-full object-cover"
+                    className="max-w-full max-h-full object-contain"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.src = '/placeholder.svg';
@@ -464,7 +484,7 @@ const Favorites = () => {
                     <Button 
                       size="icon" 
                       variant="secondary" 
-                      className="bg-white/90 backdrop-blur-sm hover:bg-white transition-colors"
+                      className="bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-colors border border-purple-500/30"
                       onClick={() => handleDownloadImage(getImageUrl(selectedPrompt.primary_image_url), selectedPrompt.title)}
                     >
                       <Download className="h-4 w-4" />
@@ -472,7 +492,7 @@ const Favorites = () => {
                     <Button 
                       size="icon" 
                       variant="secondary" 
-                      className="bg-white/90 backdrop-blur-sm hover:bg-white transition-colors"
+                      className="bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-colors border border-purple-500/30"
                       onClick={() => handleSharePrompt(selectedPrompt)}
                     >
                       <Share2 className="h-4 w-4" />
@@ -481,23 +501,46 @@ const Favorites = () => {
                 </div>
               </div>
 
-              {/* Right side - Content */}
-              <div className="flex-1 min-w-0 space-y-4">
-                {/* Prompt text */}
-                <div className="space-y-2">
-                  <h3 className="font-semibold">Prompt</h3>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {selectedPrompt.prompt_text}
-                  </p>
+              {/* Right side - Prompt details (40% width) */}
+              <div className="w-[40%] min-w-0 space-y-6 overflow-y-auto p-6">
+                {/* Title moved to right column */}
+                <div>
+                  <h2 className="text-2xl font-bold gradient-text mb-2">
+                    {selectedPrompt.title}
+                  </h2>
+                </div>
+                {/* Category and badges */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="secondary">
+                    {selectedPrompt.categories?.name || 'Uncategorized'}
+                  </Badge>
+                  <Badge variant="outline">
+                    {selectedPrompt.media_type}
+                  </Badge>
+                  <Badge 
+                    variant={selectedPrompt.difficulty_level === 'beginner' ? 'default' : 
+                           selectedPrompt.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
+                  >
+                    {selectedPrompt.difficulty_level}
+                  </Badge>
                 </div>
 
-                {/* Category */}
-                {selectedPrompt.categories && (
-                  <div className="space-y-2">
-                    <h3 className="font-semibold">Category</h3>
-                    <Badge variant="secondary">{selectedPrompt.categories.name}</Badge>
+                {/* Stats */}
+                <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Eye className="h-4 w-4" />
+                    {selectedPrompt.view_count || 0} views
                   </div>
-                )}
+                  <div className="flex items-center gap-1">
+                    <Copy className="h-4 w-4" />
+                    {selectedPrompt.copy_count || 0} copies
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Heart className="h-4 w-4" />
+                    {selectedPrompt.view_count || 0} likes
+                  </div>
+                </div>
+
 
                 {/* Style tags */}
                 {selectedPrompt.style_tags && selectedPrompt.style_tags.length > 0 && (
@@ -513,11 +556,21 @@ const Favorites = () => {
                   </div>
                 )}
 
+                {/* Prompt */}
+                {selectedPrompt.prompt_text && (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold">Prompt</h3>
+                    <div className="bg-muted p-4 rounded-lg">
+                      <p className="text-sm whitespace-pre-wrap">{selectedPrompt.prompt_text}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
-                <div className="flex gap-2 pt-4 border-t">
+                <div className="flex gap-2 pt-4 border-t border-border/50">
                   <Button 
                     onClick={() => handleCopyPrompt(selectedPrompt.prompt_text, selectedPrompt.title, selectedPrompt.id)}
-                    className="flex-1"
+                    className="flex-1 ai-button"
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copy Prompt
@@ -528,15 +581,15 @@ const Favorites = () => {
                     disabled={toggleFavoriteMutation.isPending}
                     className={`flex items-center gap-2 transition-all duration-300 ${
                       selectedPrompt.is_favorited 
-                        ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' 
-                        : 'hover:bg-gray-50'
+                        ? 'bg-purple-500/20 border-purple-500/50 text-purple-400 hover:bg-purple-500/30' 
+                        : 'hover:bg-purple-500/10 border-purple-500/20'
                     }`}
                   >
                     <Heart 
                       className={`h-4 w-4 transition-all duration-300 ${
                         selectedPrompt.is_favorited 
-                          ? 'text-red-500 fill-red-500 scale-110' 
-                          : 'text-muted-foreground hover:text-red-400'
+                          ? 'text-purple-400 fill-purple-400 scale-110' 
+                          : 'text-muted-foreground hover:text-purple-400'
                       } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
                     />
                     {toggleFavoriteMutation.isPending 
