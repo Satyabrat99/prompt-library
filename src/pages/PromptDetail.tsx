@@ -1,17 +1,17 @@
 import { useParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { 
-  Copy, 
-  Eye, 
-  Heart, 
-  ArrowLeft, 
-  Calendar, 
-  User, 
+import {
+  Copy,
+  Eye,
+  Heart,
+  ArrowLeft,
+  Calendar,
+  User,
   Tag,
   Image as ImageIcon,
   ExternalLink
@@ -25,6 +25,7 @@ type Prompt = Tables<'prompts'> & {
 
 const PromptDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const queryClient = useQueryClient();
 
   // Fetch prompt details
   const { data: prompt, isLoading, error } = useQuery({
@@ -57,7 +58,7 @@ const PromptDetail = () => {
     queryKey: ['track-view', id],
     queryFn: async () => {
       if (!id) return;
-      
+
       try {
         const { error } = await supabase
           .from('user_interactions')
@@ -65,7 +66,7 @@ const PromptDetail = () => {
             prompt_id: id,
             interaction_type: 'view',
           });
-        
+
         if (error) throw error;
 
         // Update view count
@@ -82,21 +83,36 @@ const PromptDetail = () => {
 
     try {
       await navigator.clipboard.writeText(prompt.prompt_text);
-      
-      // Track copy interaction
+
+      // Track copy interaction (fire and forget for the interaction record)
       try {
-        await supabase
-          .from('user_interactions')
-          .insert({
-            prompt_id: prompt.id,
-            interaction_type: 'copy',
-          });
-        
-        // Update copy count
-        await supabase.rpc('increment_copy_count', { prompt_id: prompt.id });
-      } catch (error) {
-        console.error('Failed to track copy:', error);
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user?.id) {
+          await supabase
+            .from('user_interactions')
+            .upsert(
+              {
+                prompt_id: prompt.id,
+                interaction_type: 'copy',
+                user_id: user.id
+              },
+              { onConflict: 'user_id, prompt_id, interaction_type', ignoreDuplicates: true }
+            );
+        }
+      } catch (err) {
+        console.warn('Interaction tracking failed:', err);
       }
+
+      // Increment copy count (always try to increment for feedback)
+      try {
+        await supabase.rpc('increment_copy_count', { prompt_id: prompt.id });
+      } catch (err) {
+        console.warn('Increment count failed:', err);
+      }
+
+      // Refresh the prompt data to show updated copy count
+      queryClient.invalidateQueries({ queryKey: ['prompt', prompt.id] });
 
       toast({
         title: 'Copied!',
@@ -121,7 +137,7 @@ const PromptDetail = () => {
           prompt_id: prompt.id,
           interaction_type: 'favorite',
         });
-      
+
       if (error) throw error;
 
       toast({
@@ -243,7 +259,7 @@ const PromptDetail = () => {
                     </div>
                   </div>
                 )}
-                
+
                 {(prompt.before_image_url || prompt.after_image_url) && (
                   <div className="grid gap-4 md:grid-cols-2">
                     {prompt.before_image_url && (
@@ -258,7 +274,7 @@ const PromptDetail = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {prompt.after_image_url && (
                       <div>
                         <h4 className="font-medium mb-2">After</h4>
@@ -280,114 +296,114 @@ const PromptDetail = () => {
 
         {/* Category */}
         {prompt.categories && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Category</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Button asChild variant="outline" className="w-full justify-start">
-                  <Link to={`/categories/${prompt.categories.slug}`}>
-                    <Tag className="mr-2 h-4 w-4" />
-                    {prompt.categories.name}
-                  </Link>
-                </Button>
-                {prompt.categories.description && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {prompt.categories.description}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Details */}
           <Card>
             <CardHeader>
-              <CardTitle>Details</CardTitle>
+              <CardTitle>Category</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline" className="w-full justify-start">
+                <Link to={`/categories/${prompt.categories.slug}`}>
+                  <Tag className="mr-2 h-4 w-4" />
+                  {prompt.categories.name}
+                </Link>
+              </Button>
+              {prompt.categories.description && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  {prompt.categories.description}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Details */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <h4 className="font-medium text-sm">Media Type</h4>
+              <Badge variant="secondary" className="mt-1">
+                {prompt.media_type}
+              </Badge>
+            </div>
+
+            <div>
+              <h4 className="font-medium text-sm">Difficulty</h4>
+              <Badge
+                variant={prompt.difficulty_level === 'beginner' ? 'default' :
+                  prompt.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
+                className="mt-1"
+              >
+                {prompt.difficulty_level}
+              </Badge>
+            </div>
+
+            <div>
+              <h4 className="font-medium text-sm">Popularity Score</h4>
+              <p className="text-sm text-muted-foreground mt-1">
+                {prompt.popularity_score || 0} points
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tags */}
+        {(prompt.style_tags?.length || prompt.industry_tags?.length) && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Tags</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {prompt.style_tags?.length && (
                 <div>
-                  <h4 className="font-medium text-sm">Media Type</h4>
-                  <Badge variant="secondary" className="mt-1">
-                    {prompt.media_type}
-                  </Badge>
+                  <h4 className="font-medium text-sm mb-2">Style Tags</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {prompt.style_tags.map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-                
+              )}
+
+              {prompt.industry_tags?.length && (
                 <div>
-                  <h4 className="font-medium text-sm">Difficulty</h4>
-                  <Badge 
-                    variant={prompt.difficulty_level === 'beginner' ? 'default' : 
-                           prompt.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
-                    className="mt-1"
-                  >
-                    {prompt.difficulty_level}
-                  </Badge>
+                  <h4 className="font-medium text-sm mb-2">Industry Tags</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {prompt.industry_tags.map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-                <div>
-                  <h4 className="font-medium text-sm">Popularity Score</h4>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {prompt.popularity_score || 0} points
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Tags */}
-            {(prompt.style_tags?.length || prompt.industry_tags?.length) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Tags</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {prompt.style_tags?.length && (
-                    <div>
-                      <h4 className="font-medium text-sm mb-2">Style Tags</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {prompt.style_tags.map((tag) => (
-                          <Badge key={tag} variant="outline" className="text-xs">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {prompt.industry_tags?.length && (
-                    <div>
-                      <h4 className="font-medium text-sm mb-2">Industry Tags</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {prompt.industry_tags.map((tag) => (
-                          <Badge key={tag} variant="outline" className="text-xs">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Actions */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button asChild className="w-full">
-                  <Link to="/explore">
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Browse More Prompts
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" className="w-full">
-                  <Link to="/admin/prompts/new">
-                    Create Similar Prompt
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
+        {/* Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Button asChild className="w-full">
+              <Link to="/explore">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Browse More Prompts
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full">
+              <Link to="/admin/prompts/new">
+                Create Similar Prompt
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

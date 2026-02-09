@@ -13,35 +13,27 @@ type Category = Tables<'categories'> & {
 
 const Categories = () => {
   // Fetch categories with prompt counts
+  // Fetch categories (reuse cache entirely if possible)
   const { data: categories, isLoading, error } = useQuery({
-    queryKey: ['categories-with-counts'],
+    queryKey: ['categories'], // Matches Explore.tsx key to share cache!
     queryFn: async () => {
-      const { data: categoriesData, error: categoriesError } = await supabase
+      console.log('Categories: Fetching categories...');
+      const { data, error } = await supabase
         .from('categories')
         .select('*')
         .order('name');
 
-      if (categoriesError) throw categoriesError;
+      if (error) {
+        console.error('Categories fetch error:', error);
+        throw error;
+      }
 
-      // Get prompt counts for each category
-      const categoriesWithCounts = await Promise.all(
-        categoriesData.map(async (category) => {
-          const { count, error: countError } = await supabase
-            .from('prompts')
-            .select('*', { count: 'exact', head: true })
-            .eq('category_id', category.id);
-
-          if (countError) throw countError;
-
-          return {
-            ...category,
-            prompt_count: count || 0,
-          };
-        })
-      );
-
-      return categoriesWithCounts as Category[];
+      return data.map(cat => ({
+        ...cat,
+        prompt_count: 0 // Placeholder
+      })) as Category[];
     },
+    staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
   if (isLoading) {
@@ -94,8 +86,8 @@ const Categories = () => {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {categories?.map((category, index) => (
-            <Card 
-              key={category.id} 
+            <Card
+              key={category.id}
               className="group relative overflow-hidden border-0 shadow-sm hover:shadow-lg transition-all duration-300 bg-card/50 backdrop-blur-sm rounded-2xl ai-card glass"
             >
               {/* Cover Image - Landscape Mode */}
@@ -115,10 +107,10 @@ const Categories = () => {
                     </div>
                   </div>
                 )}
-                
+
                 {/* Gradient Overlay for Text Readability */}
                 <div className="absolute inset-0 bg-gradient-to-br from-black/20 via-transparent to-transparent" />
-                
+
                 {/* Text Overlay - Top Left */}
                 <div className="absolute top-4 left-4 z-10">
                   <CardTitle className="text-2xl font-bold text-white mb-1 drop-shadow-lg">
@@ -128,11 +120,11 @@ const Categories = () => {
                     {category.description || 'Explore creative prompts'}
                   </CardDescription>
                 </div>
-                
+
                 {/* Action Button - Bottom Right */}
                 <div className="absolute bottom-4 right-4 z-10">
-                  <Button 
-                    asChild 
+                  <Button
+                    asChild
                     size="sm"
                     variant="ghost"
                     className="h-10 w-10 rounded-full bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-all duration-300 group/btn p-0 border border-purple-500/30 ai-button"
@@ -142,7 +134,7 @@ const Categories = () => {
                     </Link>
                   </Button>
                 </div>
-                
+
                 {/* Prompt Count - Bottom Left */}
                 <div className="absolute bottom-4 left-4 z-10">
                   <div className="flex items-center gap-2 text-sm text-white/90 drop-shadow-md bg-black/20 backdrop-blur-sm px-3 py-1 rounded-full">
@@ -163,8 +155,8 @@ const Categories = () => {
           <p className="text-muted-foreground text-lg">
             Discover thousands of creative AI prompts across all categories
           </p>
-          <Button 
-            asChild 
+          <Button
+            asChild
             className="ai-button px-8 py-3 text-lg"
           >
             <Link to="/explore">

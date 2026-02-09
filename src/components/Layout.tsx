@@ -1,12 +1,12 @@
 import { ReactNode, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../integrations/supabase/client';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
-import { 
+import {
   Home,
   Search,
   Grid3X3,
@@ -23,7 +23,8 @@ import {
   Upload,
   Heart,
   Sparkles,
-  Zap
+  Zap,
+  Star
 } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 import { useCredits } from '../hooks/useCredits';
@@ -34,12 +35,13 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const { user, signOut } = useAuth();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Fetch user profile to check role
+  // Fetch user profile to check role - only after auth is ready
   const { data: userProfile } = useQuery({
     queryKey: ['user-profile', user?.id],
     queryFn: async () => {
@@ -54,7 +56,10 @@ const Layout = ({ children }: LayoutProps) => {
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id, // Only run when user exists
+    staleTime: 10 * 60 * 1000, // 10 minutes - user profile rarely changes
+    gcTime: 15 * 60 * 1000, // 15 minutes cache
+    refetchOnWindowFocus: false, // Don't refetch on tab focus
   });
 
   const isAdmin = userProfile?.role === 'admin';
@@ -65,14 +70,34 @@ const Layout = ({ children }: LayoutProps) => {
 
   const { toast } = useToast();
   const { credits, isLoadingCredits } = useCredits();
-  
+
   const handleSignOut = async () => {
-    await signOut();
-    toast({
-      title: 'Signed out',
-      description: 'You have been successfully signed out.',
-    });
-    navigate('/auth');
+    try {
+      console.log('Layout: Starting signout...');
+
+      // Clear all React Query cache first
+      queryClient.clear();
+
+      // Sign out from Supabase (this will trigger auth state change)
+      await signOut();
+
+      // Show success message
+      toast({
+        title: 'Signed out',
+        description: 'You have been successfully signed out.',
+      });
+
+      // Navigate to auth page
+      navigate('/auth');
+
+    } catch (error) {
+      console.error('Layout signout error:', error);
+      toast({
+        title: 'Signout failed',
+        description: 'There was an error signing out. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   // User navigation (for all users)
@@ -88,6 +113,7 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Upload Prompt', href: '/admin/upload', icon: Upload },
     { name: 'Content', href: '/admin/content', icon: FileText },
     { name: 'Manage Categories', href: '/admin/categories', icon: Grid3X3 },
+    { name: 'Featured Collections', href: '/admin/featured-collections', icon: Star },
     { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
   ];
 
@@ -95,12 +121,12 @@ const Layout = ({ children }: LayoutProps) => {
     <div className="flex h-screen bg-transparent relative overflow-hidden">
       {/* Mobile sidebar overlay */}
       {mobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-black/50 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
-      
+
       {/* Sidebar */}
       <div className={`
         ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
@@ -120,7 +146,7 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="absolute bottom-1/3 right-1/4 w-1 h-1 bg-purple-400/40 rounded-full blur-sm animate-pulse delay-500"></div>
           <div className="absolute bottom-1/4 left-1/2 w-2 h-2 bg-purple-300/35 rounded-full blur-sm animate-pulse delay-1500"></div>
         </div>
-        
+
         {/* Subtle Texture Overlay */}
         <div className="absolute inset-0 opacity-15 pointer-events-none">
           <div className="absolute inset-0 bg-gradient-to-br from-transparent via-purple-500/8 to-transparent"></div>
@@ -128,7 +154,7 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_75%,rgba(147,51,234,0.08)_0%,transparent_50%)]"></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(147,51,234,0.06)_0%,transparent_70%)]"></div>
         </div>
-        
+
         <div className="flex flex-1 flex-col bg-transparent relative z-10">
           <div className="flex h-16 items-center px-6">
             {!sidebarCollapsed && (
@@ -148,7 +174,7 @@ const Layout = ({ children }: LayoutProps) => {
               {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </Button>
           </div>
-          
+
           <nav className="flex-1 space-y-1 px-4 py-4">
             {isAdmin ? (
               // Admin navigation
@@ -163,17 +189,16 @@ const Layout = ({ children }: LayoutProps) => {
                 {adminNavigation.map((item) => {
                   const isActive = location.pathname === item.href;
                   const Icon = item.icon;
-                  
+
                   return (
                     <Link
                       key={item.name}
                       to={item.href}
                       onClick={handleNavigation}
-                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${
-                        isActive
+                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${isActive
                           ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
                           : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
-                      }`}
+                        }`}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
                       <Icon className={`${sidebarCollapsed ? 'mx-auto' : 'mr-3'} h-5 w-5 flex-shrink-0`} />
@@ -195,17 +220,16 @@ const Layout = ({ children }: LayoutProps) => {
                 {userNavigation.map((item) => {
                   const isActive = location.pathname === item.href;
                   const Icon = item.icon;
-                  
+
                   return (
                     <Link
                       key={item.name}
                       to={item.href}
                       onClick={handleNavigation}
-                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${
-                        isActive
+                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${isActive
                           ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
                           : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
-                      }`}
+                        }`}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
                       <Icon className={`${sidebarCollapsed ? 'mx-auto' : 'mr-3'} h-5 w-5 flex-shrink-0`} />
@@ -216,27 +240,26 @@ const Layout = ({ children }: LayoutProps) => {
               </>
             )}
           </nav>
-          
+
           <div className="flex-shrink-0 p-4 space-y-2">
             {/* Credits indicator - hidden when collapsed */}
             {!sidebarCollapsed && (
               <div className="inline-flex items-center gap-2 text-xs text-slate-300 px-2 py-1 rounded-md bg-white/5 border border-white/10 mb-2 w-auto">
                 <span className="opacity-80">Credits</span>
                 <span className="font-medium tabular-nums">
-                  {isLoadingCredits ? '...' : `${credits?.credits_remaining ?? '-'}/${credits?.monthly_quota ?? '-'}`}
+                  {isLoadingCredits ? '...' : `${credits?.credits_remaining ?? '-'}/${credits?.daily_quota ?? '-'}`}
                 </span>
               </div>
             )}
             {/* Avatar Button */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${
-                    sidebarCollapsed 
-                      ? 'h-10 w-10 p-0 mx-auto justify-center' 
+                <Button
+                  variant="ghost"
+                  className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${sidebarCollapsed
+                      ? 'h-10 w-10 p-0 mx-auto justify-center'
                       : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
-                  }`}
+                    }`}
                   title={sidebarCollapsed ? 'Profile' : undefined}
                 >
                   <Avatar className={`${sidebarCollapsed ? 'mx-auto h-5 w-5' : 'mr-3 h-6 w-6'}`}>
@@ -268,16 +291,15 @@ const Layout = ({ children }: LayoutProps) => {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            
+
             {/* Settings Button */}
             <Link
               to="/settings"
               onClick={handleNavigation}
-              className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${
-                location.pathname === '/settings'
+              className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${location.pathname === '/settings'
                   ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
                   : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
-              }`}
+                }`}
               title={sidebarCollapsed ? 'Settings' : undefined}
             >
               <Settings className={`${sidebarCollapsed ? 'mx-auto' : 'mr-3'} h-5 w-5 flex-shrink-0`} />

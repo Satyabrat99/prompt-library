@@ -4,14 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { 
-  BarChart3, 
-  Users, 
-  FileText, 
-  Grid3X3, 
-  TrendingUp, 
-  Eye, 
-  Copy, 
+import {
+  BarChart3,
+  Users,
+  FileText,
+  Grid3X3,
+  TrendingUp,
+  Eye,
+  Copy,
   Heart,
   PlusCircle,
   Settings
@@ -31,6 +31,8 @@ interface DashboardStats {
 }
 
 const AdminDashboard = () => {
+  console.log('AdminDashboard mounting');
+
   // Fetch dashboard statistics
   const { data: stats, isLoading, error } = useQuery({
     queryKey: ['admin-dashboard-stats'],

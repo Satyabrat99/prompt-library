@@ -11,6 +11,7 @@ import { Search, Copy, Eye, Heart, X, Download, Share2, Lock } from 'lucide-reac
 import { useToast } from '../hooks/use-toast';
 import { useCredits } from '../hooks/useCredits';
 import { useAuth } from '../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 import type { Tables } from '../integrations/supabase/types';
 
 type Prompt = Tables<'prompts'> & {
@@ -19,11 +20,16 @@ type Prompt = Tables<'prompts'> & {
   is_unlocked?: boolean;
 };
 
+type FeaturedCollection = Tables<'featured_collections'> & {
+  categories?: Tables<'categories'>;
+};
+
 const Explore = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { spendPromptCredit, isSpendingCredit } = useCredits();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -70,11 +76,11 @@ const Explore = () => {
       if (selectedCategory !== 'all') {
         query = query.eq('category_id', selectedCategory);
       }
-      
+
       if (selectedMediaType !== 'all') {
         query = query.eq('media_type', selectedMediaType as any);
       }
-      
+
       if (selectedModel !== 'all') {
         query = query.eq('model', selectedModel as any);
       }
@@ -91,7 +97,7 @@ const Explore = () => {
 
       const { data, error } = await query;
       if (error) throw error;
-      
+
       // Get favorite status and unlocked status for each prompt if user is logged in
       if (user?.id && data) {
         const promptIds = data.map(p => p.id);
@@ -103,7 +109,7 @@ const Explore = () => {
             .eq('user_id', user.id)
             .eq('interaction_type', 'favorite')
             .in('prompt_id', promptIds),
-          supabase
+          (supabase as any)
             .from('user_unlocked_prompts')
             .select('prompt_id')
             .eq('user_id', user.id)
@@ -123,19 +129,29 @@ const Explore = () => {
       return (data as Prompt[]).map(p => ({ ...p, is_unlocked: false }));
     },
     enabled: true, // Always fetch prompts
+    refetchOnMount: 'always', // Force refetch when Component mounts (navigating back)
   });
 
   // Update allPrompts when new data arrives
   useEffect(() => {
+    console.log('Explore: prompts changed', {
+      promptsLen: prompts?.length,
+      page,
+      isLoading,
+      hasPrompts: !!prompts
+    });
+
     if (prompts) {
       if (page === 0) {
+        console.log('Explore: Setting allPrompts for page 0');
         // Reset for new search/filter
         setAllPrompts(prompts);
       } else {
+        console.log('Explore: Appending prompts');
         // Append new prompts
         setAllPrompts(prev => [...prev, ...prompts]);
       }
-      
+
       // Check if we have more data
       setHasMore(prompts.length === 20); // Assuming 20 items per page
       setIsLoadingMore(false);
@@ -148,19 +164,6 @@ const Explore = () => {
     setAllPrompts([]);
     setHasMore(true);
   }, [selectedCategory, selectedMediaType, selectedModel, debouncedSearchTerm]);
-
-  // Reset state when component mounts (when navigating back to explore)
-  useEffect(() => {
-    // Reset all state when component mounts
-    setPage(0);
-    setAllPrompts([]);
-    setHasMore(true);
-    setIsLoadingMore(false);
-    
-    // Invalidate and refetch the prompts query
-    queryClient.invalidateQueries({ queryKey: ['prompts'] });
-    queryClient.removeQueries({ queryKey: ['prompts'] });
-  }, [queryClient]);
 
   // Cleanup when component unmounts
   useEffect(() => {
@@ -205,6 +208,24 @@ const Explore = () => {
     enabled: true, // Always fetch categories
   });
 
+  // Fetch featured collections
+  const { data: featuredCollections } = useQuery({
+    queryKey: ['featured-collections'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('featured_collections')
+        .select(`
+          *,
+          categories:categories!featured_collections_redirect_category_id_fkey (name, slug)
+        `)
+        .eq('is_active', true)
+        .order('display_order');
+
+      if (error) throw error;
+      return data as FeaturedCollection[];
+    },
+  });
+
   // Fetch distinct models for filter
   const { data: models } = useQuery({
     queryKey: ['models'],
@@ -238,6 +259,38 @@ const Explore = () => {
     enabled: !!user?.id,
   });
 
+  // Fetch fresh prompt details when modal is open
+  const { data: freshPrompt } = useQuery({
+    queryKey: ['prompt', selectedPrompt?.id],
+    queryFn: async () => {
+      if (!selectedPrompt?.id) return null;
+      console.log('Fetching fresh details for prompt:', selectedPrompt.id);
+
+      const { data, error } = await supabase
+        .from('prompts')
+        .select('*')
+        .eq('id', selectedPrompt.id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedPrompt?.id,
+  });
+
+  // Update selectedPrompt with fresh data when available
+  useEffect(() => {
+    if (freshPrompt && selectedPrompt && freshPrompt.id === selectedPrompt.id) {
+      // Merge fresh data but keep local UI state like is_unlocked if it was optimistically updated
+      // Actually, we should trust the DB for copy_count and view_count
+      setSelectedPrompt(prev => prev ? {
+        ...prev,
+        copy_count: freshPrompt.copy_count,
+        view_count: freshPrompt.view_count
+      } : null);
+    }
+  }, [freshPrompt]);
+
   // Toggle favorite mutation
   const toggleFavoriteMutation = useMutation({
     mutationFn: async ({ promptId, isFavorited }: { promptId: string; isFavorited: boolean }) => {
@@ -254,7 +307,7 @@ const Explore = () => {
           .eq('user_id', user.id)
           .eq('prompt_id', promptId)
           .eq('interaction_type', 'favorite');
-        
+
         if (error) {
           console.error('Error removing from favorites:', error);
           throw error;
@@ -270,7 +323,7 @@ const Explore = () => {
             prompt_id: promptId,
             interaction_type: 'favorite'
           });
-        
+
         if (error) {
           console.error('Error adding to favorites:', error);
           throw error;
@@ -280,23 +333,12 @@ const Explore = () => {
     },
     onMutate: async ({ promptId, isFavorited }) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['prompts'] });
       await queryClient.cancelQueries({ queryKey: ['favorite-prompts'] });
 
       // Snapshot the previous value
-      const previousPrompts = queryClient.getQueryData(['prompts']);
       const previousFavorites = queryClient.getQueryData(['favorite-prompts']);
 
-      // Optimistically update the UI
-      queryClient.setQueryData(['prompts'], (old: any) => {
-        if (!old) return old;
-        return old.map((prompt: any) => 
-          prompt.id === promptId 
-            ? { ...prompt, is_favorited: !isFavorited }
-            : prompt
-        );
-      });
-
+      // Optimistically update the UI for favorites page only
       queryClient.setQueryData(['favorite-prompts'], (old: any) => {
         if (!old) return old;
         if (isFavorited) {
@@ -308,8 +350,11 @@ const Explore = () => {
         }
       });
 
+      // We do NOT update 'prompts' cache here because the key is complex (filters, page, etc).
+      // We rely on invalidateQueries in onSuccess/onSettled to refresh Explore page.
+
       // Return a context object with the snapshotted value
-      return { previousPrompts, previousFavorites };
+      return { previousFavorites };
     },
     onError: (err, variables, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
@@ -319,7 +364,7 @@ const Explore = () => {
       if (context?.previousFavorites) {
         queryClient.setQueryData(['favorite-prompts'], context.previousFavorites);
       }
-      
+
       console.error('Toggle favorite error:', err);
       toast({
         title: 'Error',
@@ -331,12 +376,12 @@ const Explore = () => {
       console.log('Mutation success, invalidating queries...');
       queryClient.invalidateQueries({ queryKey: ['prompts'] });
       queryClient.invalidateQueries({ queryKey: ['favorite-prompts'] });
-      
+
       // Show success toast
       toast({
         title: variables.isFavorited ? 'Removed from favorites' : 'Added to favorites',
-        description: variables.isFavorited 
-          ? 'Prompt has been removed from your favorites.' 
+        description: variables.isFavorited
+          ? 'Prompt has been removed from your favorites.'
           : 'Prompt has been added to your favorites.',
       });
     },
@@ -344,7 +389,7 @@ const Explore = () => {
 
   const handleToggleFavorite = (prompt: Prompt) => {
     console.log('Toggling favorite for prompt:', prompt.id, 'Current status:', prompt.is_favorited);
-    
+
     toggleFavoriteMutation.mutate({
       promptId: prompt.id,
       isFavorited: prompt.is_favorited || false
@@ -354,7 +399,7 @@ const Explore = () => {
   const handleCopyPrompt = async (promptText: string, title: string, promptId: string) => {
     try {
       await navigator.clipboard.writeText(promptText);
-      
+
       // Track copy interaction
       try {
         // Insert copy interaction
@@ -364,15 +409,24 @@ const Explore = () => {
             prompt_id: promptId,
             interaction_type: 'copy',
           });
-        
+
         if (interactionError) throw interactionError;
 
         // Increment copy count in prompts table
         const { error: copyCountError } = await (supabase as any).rpc('increment_copy_count', {
           prompt_id: promptId
         });
-        
+
         if (copyCountError) throw copyCountError;
+
+        // Update local state immediately
+        if (selectedPrompt && selectedPrompt.id === promptId) {
+          setSelectedPrompt(prev => prev ? { ...prev, copy_count: (prev.copy_count || 0) + 1 } : null);
+        }
+
+        setAllPrompts(prev => prev.map(p =>
+          p.id === promptId ? { ...p, copy_count: (p.copy_count || 0) + 1 } : p
+        ));
 
         // Invalidate queries to refresh the copy count
         queryClient.invalidateQueries({ queryKey: ['prompts'] });
@@ -380,7 +434,7 @@ const Explore = () => {
         console.error('Failed to track copy:', trackingError);
         // Don't show error to user for tracking failures
       }
-      
+
       toast({
         title: 'Copied!',
         description: `"${title}" has been copied to your clipboard.`,
@@ -397,21 +451,21 @@ const Explore = () => {
   const handleViewPrompt = async (promptId: string) => {
     try {
       console.log('🔍 Tracking view for prompt (no charge):', promptId);
-      
+
       // Method 1: Try using existing RPC increment if available
       console.log('📊 Trying RPC function increment_view_count...');
       const { data: rpcData, error: rpcError } = await (supabase as any).rpc('increment_view_count', {
         prompt_id: promptId
       });
-      
+
       if (!rpcError) {
         console.log('✅ RPC function worked!', rpcData);
         await queryClient.invalidateQueries({ queryKey: ['prompts'] });
         return;
       }
-      
+
       console.log('⚠️ RPC function failed, trying direct update...', rpcError);
-      
+
       // Method 2: Simple increment approach
       console.log('📊 Trying simple increment...');
       const { data: currentPrompt, error: fetchError } = await supabase
@@ -419,7 +473,7 @@ const Explore = () => {
         .select('view_count, title')
         .eq('id', promptId)
         .single();
-      
+
       if (fetchError) {
         console.error('❌ Failed to fetch current view count:', fetchError);
         return;
@@ -427,22 +481,22 @@ const Explore = () => {
 
       const currentCount = currentPrompt?.view_count || 0;
       const newViewCount = currentCount + 1;
-      
+
       console.log(`📈 Updating view count: ${currentCount} → ${newViewCount}`);
-      
+
       const { data: updateData, error: updateError } = await supabase
         .from('prompts')
-        .update({ 
+        .update({
           view_count: newViewCount,
           updated_at: new Date().toISOString()
         })
         .eq('id', promptId)
         .select('view_count, title');
-      
+
       if (updateError) {
         console.error('❌ All methods failed. Update error:', updateError);
         console.error('Full error details:', JSON.stringify(updateError, null, 2));
-        
+
         // Try one more approach - insert into user_interactions as fallback (already charged)
         console.log('🔄 Trying fallback: insert into user_interactions...');
         const { error: fallbackError } = await supabase
@@ -452,7 +506,7 @@ const Explore = () => {
             interaction_type: 'view',
             created_at: new Date().toISOString()
           });
-        
+
         if (!fallbackError) {
           console.log('✅ Fallback method worked - view tracked in user_interactions');
         } else {
@@ -464,7 +518,7 @@ const Explore = () => {
       console.log('✅ Simple increment worked!');
       console.log('📊 Updated data:', updateData);
       await queryClient.invalidateQueries({ queryKey: ['prompts'] });
-      
+
     } catch (error) {
       console.error('💥 Complete failure:', error);
       console.error('Error stack:', error.stack);
@@ -492,7 +546,7 @@ const Explore = () => {
 
       // Persist unlocked state as a fallback (RPC should already do this)
       try {
-        const { error: unlockErr } = await supabase
+        const { error: unlockErr } = await (supabase as any)
           .from('user_unlocked_prompts')
           .upsert({ user_id: user?.id as string, prompt_id: prompt.id });
         if (unlockErr) {
@@ -529,6 +583,28 @@ const Explore = () => {
     setSelectedPrompt(null);
   };
 
+  const handleFeaturedCollectionClick = (collection: FeaturedCollection) => {
+    if (collection.redirect_category_id && collection.categories?.slug) {
+      // Navigate to categories page with the specific category
+      navigate(`/categories?category=${collection.categories.slug}`);
+    } else if (collection.redirect_category_id) {
+      // Fallback: navigate to categories page
+      navigate('/categories');
+    }
+  };
+
+  const getBadgeColorClass = (color: string) => {
+    const colorMap: Record<string, string> = {
+      purple: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+      blue: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+      green: 'bg-green-500/20 text-green-300 border-green-500/30',
+      red: 'bg-red-500/20 text-red-300 border-red-500/30',
+      yellow: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
+      orange: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+    };
+    return colorMap[color] || colorMap.purple;
+  };
+
   const handleDownloadImage = async (imageUrl: string, title: string) => {
     try {
       const response = await fetch(imageUrl);
@@ -541,7 +617,7 @@ const Explore = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       toast({
         title: 'Download started',
         description: 'Image is being downloaded to your device.',
@@ -591,13 +667,13 @@ const Explore = () => {
       console.log('No image path provided, using placeholder');
       return '/placeholder.svg';
     }
-    
+
     // Check if the imagePath is already a complete URL
     if (imagePath.startsWith('http')) {
       console.log('Image path is already a complete URL:', imagePath);
       return imagePath;
     }
-    
+
     // If it's just a path, generate the public URL
     const publicUrl = supabase.storage.from('prompt-images').getPublicUrl(imagePath).data.publicUrl;
     console.log('Generated image URL:', publicUrl, 'from path:', imagePath);
@@ -701,187 +777,148 @@ const Explore = () => {
         </div>
       </div>
 
-      {/* Featured Collections - 3 Card Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Collection Card 1 */}
-        <Card className="glass ai-card overflow-hidden group cursor-pointer hover:scale-105 transition-all duration-300">
-          <div className="relative h-48 overflow-hidden">
-            <img
-              src="/dryfruit.png"
-              alt="AI Art Collection"
-              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = '/placeholder.svg';
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <div className="absolute bottom-4 left-4 right-4">
-                <h3 className="text-white font-semibold text-lg mb-1">AI Art Collection</h3>
-                <p className="text-slate-300 text-sm">24 prompts</p>
+      {/* Featured Collections - Dynamic 3 Card Row */}
+      {featuredCollections && featuredCollections.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {featuredCollections.slice(0, 3).map((collection) => (
+            <Card
+              key={collection.id}
+              className="glass ai-card overflow-hidden group cursor-pointer hover:scale-105 transition-all duration-300"
+              onClick={() => handleFeaturedCollectionClick(collection)}
+            >
+              <div className="relative h-48 overflow-hidden">
+                <img
+                  src={collection.image_url}
+                  alt={collection.title}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = '/placeholder.svg';
+                  }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="absolute bottom-4 left-4 right-4">
+                    <h3 className="text-white font-semibold text-lg mb-1">{collection.title}</h3>
+                    <p className="text-slate-300 text-sm">
+                      {collection.description || `${collection.categories?.name || 'Collection'} prompts`}
+                    </p>
+                  </div>
+                </div>
+                <Badge className={`absolute top-4 right-4 ${getBadgeColorClass(collection.badge_color)}`}>
+                  {collection.badge_text}
+                </Badge>
               </div>
-            </div>
-            <Badge className="absolute top-4 right-4 bg-purple-500/20 text-purple-300 border-purple-500/30">
-              New
-            </Badge>
-          </div>
-        </Card>
-
-        {/* Collection Card 2 */}
-        <Card className="glass ai-card overflow-hidden group cursor-pointer hover:scale-105 transition-all duration-300">
-          <div className="relative h-48 overflow-hidden">
-            <img
-              src="/asmr.png"
-              alt="Creative Writing"
-              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = '/placeholder.svg';
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <div className="absolute bottom-4 left-4 right-4">
-                <h3 className="text-white font-semibold text-lg mb-1">Creative Writing</h3>
-                <p className="text-slate-300 text-sm">18 prompts</p>
-              </div>
-            </div>
-            <Badge className="absolute top-4 right-4 bg-purple-500/20 text-purple-300 border-purple-500/30">
-              Popular
-            </Badge>
-          </div>
-        </Card>
-
-        {/* Collection Card 3 */}
-        <Card className="glass ai-card overflow-hidden group cursor-pointer hover:scale-105 transition-all duration-300">
-          <div className="relative h-48 overflow-hidden">
-            <img
-              src="/interior.png"
-              alt="Product Photography"
-              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = '/placeholder.svg';
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <div className="absolute bottom-4 left-4 right-4">
-                <h3 className="text-white font-semibold text-lg mb-1">Product Photography</h3>
-                <p className="text-slate-300 text-sm">32 prompts</p>
-              </div>
-            </div>
-            <Badge className="absolute top-4 right-4 bg-purple-500/20 text-purple-300 border-purple-500/30">
-              Trending
-            </Badge>
-          </div>
-        </Card>
-      </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Explore Section */}
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-white">Explore</h2>
-        
-        {/* Results - Scattered Grid */}
-      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
-        {allPrompts?.length === 0 && !isLoading ? (
-          <div className="col-span-full text-center py-12">
-            <p className="text-muted-foreground">No prompts found matching your criteria.</p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Try adjusting your search filters or check back later for new content.
-            </p>
-          </div>
-        ) : (
-          allPrompts?.map((prompt, index) => {
-            // Create varied heights for scattered effect
-            const heights = ['h-48', 'h-56', 'h-64', 'h-52', 'h-60', 'h-44'];
-            const randomHeight = heights[index % heights.length];
-            
-            return (
-              <div 
-                key={prompt.id} 
-                className={`break-inside-avoid mb-4 cursor-pointer group`}
-                onClick={() => handleOpenModal(prompt)}
-              >
-                <Card className="overflow-hidden hover:shadow-xl transition-all duration-300 hover:scale-105 ai-card glass">
-                  <div className="relative overflow-hidden bg-black/10">
-                    <img
-                      src={getImageUrl(prompt.primary_image_url)}
-                      alt={prompt.title}
-                      className="w-full h-auto object-contain group-hover:scale-105 transition-transform duration-500"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = '/placeholder.svg';
-                      }}
-                    />
-                    {prompt.is_unlocked && (
-                      <div className="absolute top-3 left-3">
-                        <Badge className="bg-black/70 backdrop-blur-sm text-emerald-200 border-white/30 shadow-md">Unlocked</Badge>
-                      </div>
-                    )}
-                    
-                    {/* Overlay with gradient */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <div className="absolute bottom-4 left-4 right-4">
-                        <h3 className="text-white font-semibold text-sm line-clamp-2 mb-1">
-                          {prompt.title}
-                        </h3>
-                        <p className="text-white/80 text-xs line-clamp-2">
-                          {prompt.prompt_text}
-                        </p>
-                      </div>
-                    </div>
 
-                    {/* Stats overlay */}
-                    <div className="absolute top-3 right-3 flex gap-2">
-                      <div className="flex items-center gap-1 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1">
-                        <Eye className="h-3 w-3 text-white" />
-                        <span className="text-white text-xs">{prompt.view_count || 0}</span>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className={`h-6 w-6 p-0 bg-purple-500/20 backdrop-blur-sm transition-all duration-300 ${
-                          prompt.is_favorited 
-                            ? 'hover:bg-purple-600/90' 
-                            : 'hover:bg-purple-500/80'
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleFavorite(prompt);
-                        }}
-                      >
-                        <Heart 
-                          className={`h-3 w-3 transition-all duration-300 ${
-                            prompt.is_favorited 
-                              ? 'text-purple-400 fill-purple-400 scale-110' 
-                              : 'text-white hover:text-purple-300'
-                          } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
-                        />
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-            );
-          })
-        )}
-        
-        {/* Loading indicator for infinite scroll */}
-        {isLoadingMore && (
-          <div className="col-span-full text-center py-8">
-            <div className="inline-flex items-center gap-2 text-purple-400">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
-              <span className="text-sm">Loading more prompts...</span>
+        {/* Results - Scattered Grid */}
+        <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
+          {(!allPrompts?.length && !prompts?.length && !isLoading) ? (
+            <div className="col-span-full text-center py-12">
+              <p className="text-muted-foreground">No prompts found matching your criteria.</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Try adjusting your search filters or check back later for new content.
+              </p>
             </div>
-          </div>
-        )}
-        
-        {/* End of results indicator */}
-        {!hasMore && allPrompts.length > 0 && (
-          <div className="col-span-full text-center py-8">
-            <p className="text-slate-400 text-sm">You've reached the end of the results</p>
-          </div>
-        )}
-      </div>
+          ) : (
+            (allPrompts?.length > 0 ? allPrompts : prompts)?.map((prompt, index) => {
+              // Create varied heights for scattered effect
+              const heights = ['h-48', 'h-56', 'h-64', 'h-52', 'h-60', 'h-44'];
+              const randomHeight = heights[index % heights.length];
+
+              if (index === 0) console.log('Explore: Rendering first item', prompt.id);
+
+              return (
+                <div
+                  key={prompt.id}
+                  className={`break-inside-avoid mb-4 cursor-pointer group`}
+                  onClick={() => handleOpenModal(prompt)}
+                >
+                  <Card className="overflow-hidden hover:shadow-xl transition-all duration-300 hover:scale-105 ai-card glass">
+                    <div className="relative overflow-hidden bg-black/10">
+                      <img
+                        src={getImageUrl(prompt.primary_image_url)}
+                        alt={prompt.title}
+                        className="w-full h-auto object-contain group-hover:scale-105 transition-transform duration-500"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = '/placeholder.svg';
+                        }}
+                      />
+                      {prompt.is_unlocked && (
+                        <div className="absolute top-3 left-3">
+                          <Badge className="bg-black/70 backdrop-blur-sm text-emerald-200 border-white/30 shadow-md">Unlocked</Badge>
+                        </div>
+                      )}
+
+                      {/* Overlay with gradient */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="absolute bottom-4 left-4 right-4">
+                          <h3 className="text-white font-semibold text-sm line-clamp-2 mb-1">
+                            {prompt.title}
+                          </h3>
+                          <p className="text-white/80 text-xs line-clamp-2">
+                            {prompt.prompt_text}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Stats overlay */}
+                      <div className="absolute top-3 right-3 flex gap-2">
+                        <div className="flex items-center gap-1 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1">
+                          <Eye className="h-3 w-3 text-white" />
+                          <span className="text-white text-xs">{prompt.view_count || 0}</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className={`h-6 w-6 p-0 bg-purple-500/20 backdrop-blur-sm transition-all duration-300 ${prompt.is_favorited
+                            ? 'hover:bg-purple-600/90'
+                            : 'hover:bg-purple-500/80'
+                            }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleFavorite(prompt);
+                          }}
+                        >
+                          <Heart
+                            className={`h-3 w-3 transition-all duration-300 ${prompt.is_favorited
+                              ? 'text-purple-400 fill-purple-400 scale-110'
+                              : 'text-white hover:text-purple-300'
+                              } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`}
+                          />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              );
+            })
+          )}
+
+          {/* Loading indicator for infinite scroll */}
+          {isLoadingMore && (
+            <div className="col-span-full text-center py-8">
+              <div className="inline-flex items-center gap-2 text-purple-400">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-400 border-t-transparent"></div>
+                <span className="text-sm">Loading more prompts...</span>
+              </div>
+            </div>
+          )}
+
+          {/* End of results indicator */}
+          {!hasMore && allPrompts.length > 0 && (
+            <div className="col-span-full text-center py-8">
+              <p className="text-slate-400 text-sm">You've reached the end of the results</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Prompt Studio Modal */}
@@ -901,20 +938,20 @@ const Explore = () => {
                       target.src = '/placeholder.svg';
                     }}
                   />
-                  
+
                   {/* Image overlay actions */}
                   <div className="absolute top-4 right-4 flex gap-2">
-                    <Button 
-                      size="icon" 
-                      variant="secondary" 
+                    <Button
+                      size="icon"
+                      variant="secondary"
                       className="bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-colors border border-purple-500/30"
                       onClick={() => handleDownloadImage(getImageUrl(selectedPrompt.primary_image_url), selectedPrompt.title)}
                     >
                       <Download className="h-4 w-4" />
                     </Button>
-                    <Button 
-                      size="icon" 
-                      variant="secondary" 
+                    <Button
+                      size="icon"
+                      variant="secondary"
                       className="bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-colors border border-purple-500/30"
                       onClick={() => handleSharePrompt(selectedPrompt)}
                     >
@@ -948,9 +985,9 @@ const Explore = () => {
                       {selectedPrompt.model}
                     </Badge>
                   )}
-                  <Badge 
-                    variant={selectedPrompt.difficulty_level === 'beginner' ? 'default' : 
-                           selectedPrompt.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
+                  <Badge
+                    variant={selectedPrompt.difficulty_level === 'beginner' ? 'default' :
+                      selectedPrompt.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
                   >
                     {selectedPrompt.difficulty_level}
                   </Badge>
@@ -968,7 +1005,7 @@ const Explore = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <Heart className="h-4 w-4" />
-                    {selectedPrompt.view_count || 0} likes
+                    Likes
                   </div>
                 </div>
 
@@ -1003,41 +1040,39 @@ const Explore = () => {
                 <div className="flex gap-2 pt-4 border-t border-border/50">
                   {selectedPrompt.is_unlocked ? (
                     <>
-                      <Button 
+                      <Button
                         onClick={() => handleCopyPrompt(selectedPrompt.prompt_text, selectedPrompt.title, selectedPrompt.id)}
                         className="flex-1 ai-button"
                       >
                         <Copy className="h-4 w-4 mr-2" />
                         Copy Prompt
                       </Button>
-                      <Button 
+                      <Button
                         variant="outline"
                         onClick={() => handleToggleFavorite(selectedPrompt)}
                         disabled={toggleFavoriteMutation.isPending}
-                        className={`flex items-center gap-2 transition-all duration-300 ${
-                          selectedPrompt.is_favorited 
-                            ? 'bg-purple-500/20 border-purple-500/50 text-purple-400 hover:bg-purple-500/30' 
-                            : 'hover:bg-purple-500/10 border-purple-500/20'
-                        }`}
+                        className={`flex items-center gap-2 transition-all duration-300 ${selectedPrompt.is_favorited
+                          ? 'bg-purple-500/20 border-purple-500/50 text-purple-400 hover:bg-purple-500/30'
+                          : 'hover:bg-purple-500/10 border-purple-500/20'
+                          }`}
                       >
-                        <Heart 
-                          className={`h-4 w-4 transition-all duration-300 ${
-                            selectedPrompt.is_favorited 
-                              ? 'text-purple-400 fill-purple-400 scale-110' 
-                              : 'text-muted-foreground hover:text-purple-400'
-                          } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
+                        <Heart
+                          className={`h-4 w-4 transition-all duration-300 ${selectedPrompt.is_favorited
+                            ? 'text-purple-400 fill-purple-400 scale-110'
+                            : 'text-muted-foreground hover:text-purple-400'
+                            } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`}
                         />
-                        {toggleFavoriteMutation.isPending 
-                          ? 'Updating...' 
-                          : selectedPrompt.is_favorited 
-                            ? 'Liked' 
+                        {toggleFavoriteMutation.isPending
+                          ? 'Updating...'
+                          : selectedPrompt.is_favorited
+                            ? 'Liked'
                             : 'Like'
                         }
                       </Button>
                     </>
                   ) : (
                     <>
-                      <Button 
+                      <Button
                         onClick={() => handleUnlockInModal(selectedPrompt)}
                         className="flex-1 ai-button"
                         disabled={isSpendingCredit}
@@ -1045,7 +1080,7 @@ const Explore = () => {
                         <Lock className="h-4 w-4 mr-2" />
                         {isSpendingCredit ? 'Unlocking...' : 'Unlock (1 credit)'}
                       </Button>
-                      <Button 
+                      <Button
                         variant="outline"
                         disabled
                         className="flex items-center gap-2 opacity-60"

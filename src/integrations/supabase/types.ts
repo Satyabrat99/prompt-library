@@ -44,6 +44,56 @@ export type Database = {
         }
         Relationships: []
       }
+      featured_collections: {
+        Row: {
+          id: string
+          title: string
+          description: string | null
+          image_url: string
+          redirect_category_id: string | null
+          display_order: number
+          is_active: boolean
+          badge_text: string
+          badge_color: string
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          title: string
+          description?: string | null
+          image_url: string
+          redirect_category_id?: string | null
+          display_order?: number
+          is_active?: boolean
+          badge_text?: string
+          badge_color?: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          title?: string
+          description?: string | null
+          image_url?: string
+          redirect_category_id?: string | null
+          display_order?: number
+          is_active?: boolean
+          badge_text?: string
+          badge_color?: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "featured_collections_redirect_category_id_fkey"
+            columns: ["redirect_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prompts: {
         Row: {
           after_image_url: string | null
@@ -150,6 +200,44 @@ export type Database = {
           },
         ]
       }
+      user_credits: {
+        Row: {
+          id: string
+          user_id: string
+          credits_remaining: number
+          daily_quota: number
+          credit_date: string
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          credits_remaining?: number
+          daily_quota?: number
+          credit_date: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          credits_remaining?: number
+          daily_quota?: number
+          credit_date?: string
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_credits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_profiles: {
         Row: {
           avatar_url: string | null
@@ -158,6 +246,7 @@ export type Database = {
           id: string
           role: Database["public"]["Enums"]["user_role"] | null
           updated_at: string | null
+          username: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -166,6 +255,7 @@ export type Database = {
           id: string
           role?: Database["public"]["Enums"]["user_role"] | null
           updated_at?: string | null
+          username?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -174,6 +264,7 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["user_role"] | null
           updated_at?: string | null
+          username?: string | null
         }
         Relationships: []
       }

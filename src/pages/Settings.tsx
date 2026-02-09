@@ -95,11 +95,25 @@ const Settings = () => {
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    toast({
-      title: 'Signed out',
-      description: 'You have been successfully signed out.',
-    });
+    try {
+      // Clear all React Query cache before signing out
+      await queryClient.clear();
+      
+      // Sign out from Supabase
+      await signOut();
+      
+      toast({
+        title: 'Signed out',
+        description: 'You have been successfully signed out.',
+      });
+    } catch (error) {
+      console.error('Signout error:', error);
+      toast({
+        title: 'Signout failed',
+        description: 'There was an error signing out. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (profileLoading) {
