@@ -162,7 +162,7 @@ const Layout = ({ children }: LayoutProps) => {
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center glow">
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                <h1 className="text-xl font-bold gradient-text">Prompt Studio</h1>
+                <h1 className="text-xl font-bold gradient-text">PromptVault</h1>
               </div>
             )}
             <Button
@@ -196,8 +196,8 @@ const Layout = ({ children }: LayoutProps) => {
                       to={item.href}
                       onClick={handleNavigation}
                       className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${isActive
-                          ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
-                          : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
+                        ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
+                        : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
                         }`}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
@@ -227,8 +227,8 @@ const Layout = ({ children }: LayoutProps) => {
                       to={item.href}
                       onClick={handleNavigation}
                       className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${isActive
-                          ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
-                          : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
+                        ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
+                        : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
                         }`}
                       title={sidebarCollapsed ? item.name : undefined}
                     >
@@ -257,8 +257,8 @@ const Layout = ({ children }: LayoutProps) => {
                 <Button
                   variant="ghost"
                   className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${sidebarCollapsed
-                      ? 'h-10 w-10 p-0 mx-auto justify-center'
-                      : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
+                    ? 'h-10 w-10 p-0 mx-auto justify-center'
+                    : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
                     }`}
                   title={sidebarCollapsed ? 'Profile' : undefined}
                 >
@@ -297,8 +297,8 @@ const Layout = ({ children }: LayoutProps) => {
               to="/settings"
               onClick={handleNavigation}
               className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-300 ${location.pathname === '/settings'
-                  ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
-                  : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
+                ? 'bg-white/20 text-white border border-white/20 shadow-lg shadow-purple-500/10'
+                : 'text-slate-300 hover:bg-white/10 hover:text-white hover:border hover:border-white/10'
                 }`}
               title={sidebarCollapsed ? 'Settings' : undefined}
             >

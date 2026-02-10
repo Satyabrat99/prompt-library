@@ -45,7 +45,7 @@ const Favorites = () => {
         .eq('interaction_type', 'favorite');
 
       if (error) throw error;
-      
+
       return data?.map(item => ({
         ...item.prompts,
         is_favorited: true
@@ -70,7 +70,7 @@ const Favorites = () => {
           .eq('user_id', user.id)
           .eq('prompt_id', promptId)
           .eq('interaction_type', 'favorite');
-        
+
         if (error) {
           console.error('Error removing from favorites:', error);
           throw error;
@@ -86,7 +86,7 @@ const Favorites = () => {
             prompt_id: promptId,
             interaction_type: 'favorite'
           });
-        
+
         if (error) {
           console.error('Error adding to favorites:', error);
           throw error;
@@ -117,8 +117,8 @@ const Favorites = () => {
 
       queryClient.setQueryData(['prompts'], (old: any) => {
         if (!old) return old;
-        return old.map((prompt: any) => 
-          prompt.id === promptId 
+        return old.map((prompt: any) =>
+          prompt.id === promptId
             ? { ...prompt, is_favorited: !isFavorited }
             : prompt
         );
@@ -141,7 +141,7 @@ const Favorites = () => {
       if (context?.previousPrompts) {
         queryClient.setQueryData(['prompts'], context.previousPrompts);
       }
-      
+
       console.error('Toggle favorite error:', err);
       toast({
         title: 'Error',
@@ -153,12 +153,12 @@ const Favorites = () => {
       console.log('Favorites mutation success, invalidating queries...');
       queryClient.invalidateQueries({ queryKey: ['favorite-prompts'] });
       queryClient.invalidateQueries({ queryKey: ['prompts'] });
-      
+
       // Show success toast
       toast({
         title: variables.isFavorited ? 'Removed from favorites' : 'Added to favorites',
-        description: variables.isFavorited 
-          ? 'Prompt has been removed from your favorites.' 
+        description: variables.isFavorited
+          ? 'Prompt has been removed from your favorites.'
           : 'Prompt has been added to your favorites.',
       });
     },
@@ -175,11 +175,11 @@ const Favorites = () => {
     console.log('Opening modal for prompt:', prompt);
     setSelectedPrompt(prompt);
     setIsModalOpen(true);
-    
+
     // Track view interaction
     try {
       console.log('Tracking view for prompt:', prompt.id);
-      
+
       // Insert view interaction (optional - for analytics)
       const { error: interactionError } = await supabase
         .from('user_interactions')
@@ -187,7 +187,7 @@ const Favorites = () => {
           prompt_id: prompt.id,
           interaction_type: 'view',
         });
-      
+
       if (interactionError) {
         console.warn('Failed to insert view interaction:', interactionError);
       }
@@ -198,19 +198,19 @@ const Favorites = () => {
         .select('view_count')
         .eq('id', prompt.id)
         .single();
-      
+
       if (fetchError) {
         console.error('Failed to fetch current view count:', fetchError);
         return;
       }
 
       const newViewCount = (currentPrompt?.view_count || 0) + 1;
-      
+
       const { error: updateError } = await supabase
         .from('prompts')
         .update({ view_count: newViewCount })
         .eq('id', prompt.id);
-      
+
       if (updateError) {
         console.error('Failed to update view count:', updateError);
         return;
@@ -243,7 +243,7 @@ const Favorites = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       toast({
         title: 'Download started',
         description: 'Image is being downloaded to your device.',
@@ -291,7 +291,7 @@ const Favorites = () => {
   const handleCopyPrompt = async (promptText: string, title: string, promptId: string) => {
     try {
       await navigator.clipboard.writeText(promptText);
-      
+
       // Track copy interaction
       try {
         // Insert copy interaction
@@ -301,14 +301,14 @@ const Favorites = () => {
             prompt_id: promptId,
             interaction_type: 'copy',
           });
-        
+
         if (interactionError) throw interactionError;
 
         // Increment copy count in prompts table
         const { error: copyCountError } = await supabase.rpc('increment_copy_count', {
           prompt_id: promptId
         });
-        
+
         if (copyCountError) throw copyCountError;
 
         // Invalidate queries to refresh the copy count
@@ -318,7 +318,7 @@ const Favorites = () => {
         console.error('Failed to track copy:', trackingError);
         // Don't show error to user for tracking failures
       }
-      
+
       toast({
         title: 'Copied!',
         description: `"${title}" prompt copied to clipboard.`,
@@ -335,12 +335,12 @@ const Favorites = () => {
 
   const getImageUrl = (imagePath: string | null) => {
     if (!imagePath) return '/placeholder.svg';
-    
+
     // Check if the imagePath is already a complete URL
     if (imagePath.startsWith('http')) {
       return imagePath;
     }
-    
+
     // If it's just a path, generate the public URL
     return supabase.storage.from('prompt-images').getPublicUrl(imagePath).data.publicUrl;
   };
@@ -383,10 +383,10 @@ const Favorites = () => {
             // Create varied heights for scattered effect
             const heights = ['h-48', 'h-56', 'h-64', 'h-52', 'h-60', 'h-44'];
             const randomHeight = heights[index % heights.length];
-            
+
             return (
-              <div 
-                key={prompt.id} 
+              <div
+                key={prompt.id}
                 className={`break-inside-avoid mb-4 cursor-pointer group`}
                 onClick={() => handleOpenModal(prompt)}
               >
@@ -401,7 +401,7 @@ const Favorites = () => {
                         target.src = '/placeholder.svg';
                       }}
                     />
-                    
+
                     {/* Overlay with gradient */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                       <div className="absolute bottom-4 left-4 right-4">
@@ -423,22 +423,20 @@ const Favorites = () => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className={`h-6 w-6 p-0 bg-black/50 backdrop-blur-sm transition-all duration-300 ${
-                          prompt.is_favorited 
-                            ? 'hover:bg-purple-600/90' 
+                        className={`h-6 w-6 p-0 bg-black/50 backdrop-blur-sm transition-all duration-300 ${prompt.is_favorited
+                            ? 'hover:bg-purple-600/90'
                             : 'hover:bg-purple-500/80'
-                        }`}
+                          }`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleToggleFavorite(prompt);
                         }}
                       >
-                        <Heart 
-                          className={`h-3 w-3 transition-all duration-300 ${
-                            prompt.is_favorited 
-                              ? 'text-purple-500 fill-purple-500 scale-110' 
+                        <Heart
+                          className={`h-3 w-3 transition-all duration-300 ${prompt.is_favorited
+                              ? 'text-purple-500 fill-purple-500 scale-110'
                               : 'text-white hover:text-purple-300'
-                          } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
+                            } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`}
                         />
                       </Button>
                     </div>
@@ -461,7 +459,7 @@ const Favorites = () => {
         </div>
       )}
 
-      {/* Prompt Studio Modal */}
+      {/* PromptVault Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden p-0 glass border-purple-500/20">
           {selectedPrompt && (
@@ -478,20 +476,20 @@ const Favorites = () => {
                       target.src = '/placeholder.svg';
                     }}
                   />
-                  
+
                   {/* Image overlay actions */}
                   <div className="absolute top-4 right-4 flex gap-2">
-                    <Button 
-                      size="icon" 
-                      variant="secondary" 
+                    <Button
+                      size="icon"
+                      variant="secondary"
                       className="bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-colors border border-purple-500/30"
                       onClick={() => handleDownloadImage(getImageUrl(selectedPrompt.primary_image_url), selectedPrompt.title)}
                     >
                       <Download className="h-4 w-4" />
                     </Button>
-                    <Button 
-                      size="icon" 
-                      variant="secondary" 
+                    <Button
+                      size="icon"
+                      variant="secondary"
                       className="bg-purple-500/20 backdrop-blur-sm hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 transition-colors border border-purple-500/30"
                       onClick={() => handleSharePrompt(selectedPrompt)}
                     >
@@ -517,9 +515,9 @@ const Favorites = () => {
                   <Badge variant="outline">
                     {selectedPrompt.media_type}
                   </Badge>
-                  <Badge 
-                    variant={selectedPrompt.difficulty_level === 'beginner' ? 'default' : 
-                           selectedPrompt.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
+                  <Badge
+                    variant={selectedPrompt.difficulty_level === 'beginner' ? 'default' :
+                      selectedPrompt.difficulty_level === 'intermediate' ? 'secondary' : 'destructive'}
                   >
                     {selectedPrompt.difficulty_level}
                   </Badge>
@@ -568,34 +566,32 @@ const Favorites = () => {
 
                 {/* Actions */}
                 <div className="flex gap-2 pt-4 border-t border-border/50">
-                  <Button 
+                  <Button
                     onClick={() => handleCopyPrompt(selectedPrompt.prompt_text, selectedPrompt.title, selectedPrompt.id)}
                     className="flex-1 ai-button"
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copy Prompt
                   </Button>
-                  <Button 
+                  <Button
                     variant="outline"
                     onClick={() => handleToggleFavorite(selectedPrompt)}
                     disabled={toggleFavoriteMutation.isPending}
-                    className={`flex items-center gap-2 transition-all duration-300 ${
-                      selectedPrompt.is_favorited 
-                        ? 'bg-purple-500/20 border-purple-500/50 text-purple-400 hover:bg-purple-500/30' 
+                    className={`flex items-center gap-2 transition-all duration-300 ${selectedPrompt.is_favorited
+                        ? 'bg-purple-500/20 border-purple-500/50 text-purple-400 hover:bg-purple-500/30'
                         : 'hover:bg-purple-500/10 border-purple-500/20'
-                    }`}
+                      }`}
                   >
-                    <Heart 
-                      className={`h-4 w-4 transition-all duration-300 ${
-                        selectedPrompt.is_favorited 
-                          ? 'text-purple-400 fill-purple-400 scale-110' 
+                    <Heart
+                      className={`h-4 w-4 transition-all duration-300 ${selectedPrompt.is_favorited
+                          ? 'text-purple-400 fill-purple-400 scale-110'
                           : 'text-muted-foreground hover:text-purple-400'
-                      } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`} 
+                        } ${toggleFavoriteMutation.isPending ? 'animate-pulse' : ''}`}
                     />
-                    {toggleFavoriteMutation.isPending 
-                      ? 'Updating...' 
-                      : selectedPrompt.is_favorited 
-                        ? 'Liked' 
+                    {toggleFavoriteMutation.isPending
+                      ? 'Updating...'
+                      : selectedPrompt.is_favorited
+                        ? 'Liked'
                         : 'Like'
                     }
                   </Button>

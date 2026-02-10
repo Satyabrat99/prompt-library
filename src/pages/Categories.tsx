@@ -57,7 +57,7 @@ const Categories = () => {
 
   return (
     <div className="space-y-8">
-      {/* Prompt Studio Header */}
+      {/* PromptVault Header */}
       <div className="text-center space-y-4">
         <div className="inline-flex items-center gap-2 bg-purple-500/10 px-4 py-2 rounded-full border border-purple-500/20">
           <Sparkles className="h-4 w-4 text-purple-500" />

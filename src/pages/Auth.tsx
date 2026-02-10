@@ -16,7 +16,7 @@ const testimonials = [
     name: "Liam Smith",
     role: "Investor",
     company: "Global Real Estate Investment Firm",
-    quote: "With AI Studio, I can manage my global property portfolio and complete secure transactions in minutes — all with AI. It's the perfect blend of real estate and AI innovation.",
+    quote: "With PromptVault, I can manage my global property portfolio and complete secure transactions in minutes — all with AI. It's the perfect blend of real estate and AI innovation.",
     image: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&h=600&fit=crop&crop=center"
   },
   {
@@ -24,7 +24,7 @@ const testimonials = [
     name: "Sarah Johnson",
     role: "Creative Director",
     company: "Digital Marketing Agency",
-    quote: "AI Studio has revolutionized how we create and manage content. The AI-powered prompts have increased our productivity by 300% while maintaining exceptional quality.",
+    quote: "PromptVault has revolutionized how we create and manage content. The AI-powered prompts have increased our productivity by 300% while maintaining exceptional quality.",
     image: "https://images.unsplash.com/photo-1600596542815-ffad4c2039ab?w=800&h=600&fit=crop&crop=center"
   },
   {
@@ -40,7 +40,7 @@ const testimonials = [
     name: "Emily Rodriguez",
     role: "Content Creator",
     company: "Freelance Writer",
-    quote: "As a content creator, AI Studio has been a game-changer. The variety of prompts and the quality of outputs have helped me scale my business significantly.",
+    quote: "As a content creator, PromptVault has been a game-changer. The variety of prompts and the quality of outputs have helped me scale my business significantly.",
     image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&h=600&fit=crop&crop=center"
   },
 ];

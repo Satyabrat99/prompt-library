@@ -921,7 +921,7 @@ const Explore = () => {
         </div>
       </div>
 
-      {/* Prompt Studio Modal */}
+      {/* PromptVault Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden p-0 glass border-purple-500/20">
           {selectedPrompt && (

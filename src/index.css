@@ -10,7 +10,7 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Prompt Studio Dark Theme */
+    /* PromptVault Dark Theme */
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
 
@@ -86,17 +86,17 @@ All colors MUST be HSL.
 }
 
 @layer components {
-  /* Prompt Studio Glass Effect */
+  /* PromptVault Glass Effect */
   .glass {
     @apply bg-white/5 backdrop-blur-xl border border-white/20 shadow-lg shadow-black/10;
   }
   
-  /* Prompt Studio Glow Effect */
+  /* PromptVault Glow Effect */
   .glow {
     box-shadow: 0 0 20px hsl(270 95% 60% / 0.3);
   }
   
-  /* Prompt Studio Gradient Text */
+  /* PromptVault Gradient Text */
   .gradient-text {
     background: linear-gradient(135deg, hsl(270 95% 60%) 0%, hsl(280 100% 70%) 100%);
     -webkit-background-clip: text;
@@ -104,12 +104,12 @@ All colors MUST be HSL.
     background-clip: text;
   }
   
-  /* Prompt Studio Card Hover */
+  /* PromptVault Card Hover */
   .ai-card {
     @apply transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/10 hover:-translate-y-1;
   }
   
-  /* Prompt Studio Button */
+  /* PromptVault Button */
   .ai-button {
     @apply bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300;
   }
