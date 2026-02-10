@@ -24,7 +24,8 @@ import {
   Heart,
   Sparkles,
   Zap,
-  Star
+  Star,
+  Vault
 } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 import { useCredits } from '../hooks/useCredits';
@@ -159,8 +160,8 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="flex h-16 items-center px-6">
             {!sidebarCollapsed && (
               <div className="flex items-center space-x-2">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center glow">
-                  <Sparkles className="h-4 w-4 text-white" />
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center glow shadow-lg shadow-cyan-500/20">
+                  <Vault className="h-5 w-5 text-white" />
                 </div>
                 <h1 className="text-xl font-bold gradient-text">PromptVault</h1>
               </div>
